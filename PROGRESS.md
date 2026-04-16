@@ -6,19 +6,19 @@ Step-by-step build plan. Each phase produces something verifiable before moving 
 
 ---
 
-## Phase 1 — Scaffold `[ ]`
+## Phase 1 — Scaffold `[x]`
 
 Goal: app boots to an empty two-pane layout; folder structure and shared types in place.
 
-- [ ] `npm create vite@latest` — React + TypeScript
-- [ ] Install deps: `mp4box`
-- [ ] Folder structure: `src/{components,hooks,lib/video,lib/spritesheet,lib/export,types}`
-- [ ] Shared types in `src/types/index.ts`: `FrameSample`, `GridLayout`, `SpriteSheetMeta`, `ExportOptions`, `VideoFileInfo`
-- [ ] Stub empty modules in each `lib/*` folder so imports resolve
-- [ ] `App.tsx` renders empty left (controls) / right (preview) shell
-- [ ] `npm run dev` boots without errors
+- [x] `npm create vite@latest` — React + TypeScript
+- [x] Install deps: `mp4box`
+- [x] Folder structure: `src/{components,hooks,lib/video,lib/spritesheet,lib/export,types}`
+- [x] Shared types in `src/types/index.ts`: `FrameSample`, `GridLayout`, `SpriteSheetMeta`, `ExportOptions`, `VideoFileInfo`
+- [x] Stub empty modules in each `lib/*` folder so imports resolve
+- [x] `App.tsx` renders empty left (controls) / right (preview) shell
+- [x] `npm run dev` boots without errors (`vite build` also passes)
 
-**Verify:** app loads in browser, two-pane layout visible, no console errors.
+**Verify:** ✅ app loads, two-pane layout visible, no console errors. Build + dev both clean.
 
 ---
 
