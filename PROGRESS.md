@@ -22,17 +22,23 @@ Goal: app boots to an empty two-pane layout; folder structure and shared types i
 
 ---
 
-## Phase 2 — Video decode pipeline `[ ]`
+## Phase 2 — Video decode pipeline `[~]`
 
 Goal: given an MP4 file, start/end, and target fps, produce `VideoFrame`s at requested timestamps.
 
-- [ ] `lib/video/demuxer.ts` — mp4box.js wrapper: load file, return `{ track, codec, description, duration, width, height, fps, container }`
-- [ ] `lib/video/capability.ts` — `VideoDecoder.isConfigSupported()` probe; throws friendly error if unsupported
-- [ ] `lib/video/decoder.ts` — `VideoDecoder` wrapper with backpressure (cap in-flight frames), strict `VideoFrame.close()` on every output
-- [ ] `lib/video/sampler.ts` — given start/end/fps, compute target timestamps; nearest-frame picker
-- [ ] `hooks/useFrameDecoder.ts` — orchestrates demux → decode → sample, yields frames via async iterator/callback
+- [x] `lib/video/demuxer.ts` — mp4box.js wrapper: track metadata + sample list, codec description extraction for AVC / HEVC / VP9 / AV1
+- [x] `lib/video/capability.ts` — `VideoDecoder.isConfigSupported()` probe; throws friendly error if unsupported
+- [x] `lib/video/decoder.ts` — `VideoDecoder` wrapper with backpressure (cap in-flight frames); caller owns `VideoFrame.close()`
+- [x] `lib/video/sampler.ts` — nearest-frame picker for target timestamps; widens decode window back to the preceding keyframe for P/B-frame context
+- [x] `lib/video/extract.ts` — top-level orchestrator (demux → capability check → sampler plan → decode → emit kept frames)
+- [x] Temporary test button in `App.tsx`: pick a file, logs emitted frames (timestamp + size)
+- [x] `tsc -b && vite build` passes clean
 
-**Verify:** console-log frame dump from a sample MP4; confirm timestamps match expected sampling grid; no memory growth when sampling hundreds of frames.
+**Verify (pending — needs real video in a browser):**
+- [ ] Pick an MP4 (H.264) in the test harness; confirm frames log with roughly even timestamps matching requested fps
+- [ ] Try a MOV file
+- [ ] Try a file with a codec the browser doesn't support — confirm friendly error message
+- [ ] Process a longer range (say 20s @ 30fps = 600 frames) and watch Task Manager / Activity Monitor for memory growth
 
 ---
 
