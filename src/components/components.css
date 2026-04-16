@@ -5,12 +5,12 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
-  border: 1px dashed var(--border-2);
-  border-radius: 8px;
+  border: 1.5px dashed var(--border-2);
+  border-radius: 12px;
   padding: 36px 20px;
   cursor: pointer;
   color: var(--muted);
-  transition: border-color 0.2s, color 0.2s;
+  transition: border-color 0.2s, background 0.2s;
   text-align: center;
   user-select: none;
   background: var(--surface-2);
@@ -35,35 +35,35 @@
 
 .uploader:hover,
 .uploader--drag {
-  border-color: rgba(255, 42, 42, 0.4);
-  color: var(--fg-2);
+  border-color: rgba(255, 51, 102, 0.35);
 }
 
 .uploader__icon {
-  width: 44px;
-  height: 44px;
-  background: var(--surface-3);
+  width: 48px;
+  height: 48px;
+  background: var(--surface);
   border: 1px solid var(--border-2);
-  border-radius: 8px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--muted-2);
-  transition: border-color 0.2s, color 0.2s, background 0.2s;
+  transition: border-color 0.2s, color 0.2s, box-shadow 0.2s;
   position: relative;
   z-index: 1;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 
 .uploader:hover .uploader__icon,
 .uploader--drag .uploader__icon {
-  border-color: rgba(255, 42, 42, 0.4);
+  border-color: rgba(255, 51, 102, 0.35);
   color: var(--accent);
-  background: var(--accent-dim);
+  box-shadow: 0 0 0 4px rgba(255, 51, 102, 0.07);
 }
 
 .uploader__text {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   position: relative;
   z-index: 1;
   color: var(--fg-2);
@@ -72,7 +72,7 @@
 .uploader__hint {
   font-size: 11px;
   color: var(--muted);
-  font-weight: 300;
+  font-weight: 400;
   letter-spacing: 0.03em;
   position: relative;
   z-index: 1;
@@ -80,10 +80,11 @@
 
 /* ── File info ────────────────────────────────────────────── */
 .file-info {
-  background: var(--surface-2);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 10px;
   overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
 .file-info__header {
@@ -97,7 +98,7 @@
 
 .file-info__name {
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -120,7 +121,7 @@
 .file-info__grid dt {
   color: var(--muted-2);
   font-size: 11px;
-  font-weight: 400;
+  font-weight: 500;
 }
 
 .file-info__grid dd {
@@ -128,7 +129,7 @@
   font-family: 'JetBrains Mono', monospace;
   font-size: 10.5px;
   color: var(--fg-2);
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
 }
 
 /* ── Control sections ─────────────────────────────────────── */
@@ -138,7 +139,7 @@
 
 .control-section__title {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--muted-2);
@@ -194,6 +195,7 @@
   flex-shrink: 0;
   min-width: 72px;
   font-size: 11px;
+  font-weight: 500;
 }
 
 /* ── Form elements ────────────────────────────────────────── */
@@ -204,93 +206,96 @@
 
 .num-input {
   width: 72px;
-  background: var(--surface-3);
+  background: var(--surface-2);
   border: 1px solid var(--border-2);
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--fg);
   padding: 4px 8px;
   font-size: 11px;
   font-family: 'JetBrains Mono', monospace;
   text-align: right;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .num-input:focus {
   outline: none;
-  border-color: rgba(255, 42, 42, 0.5);
-  box-shadow: 0 0 0 2px rgba(255, 42, 42, 0.06);
+  border-color: rgba(255, 51, 102, 0.4);
+  box-shadow: 0 0 0 3px rgba(255, 51, 102, 0.07);
 }
 
 .select {
-  background: var(--surface-3);
+  background: var(--surface-2);
   border: 1px solid var(--border-2);
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--fg);
   padding: 4px 8px;
   font-size: 11.5px;
   font-family: inherit;
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .select:focus {
   outline: none;
-  border-color: rgba(255, 42, 42, 0.5);
-  box-shadow: 0 0 0 2px rgba(255, 42, 42, 0.06);
+  border-color: rgba(255, 51, 102, 0.4);
+  box-shadow: 0 0 0 3px rgba(255, 51, 102, 0.07);
 }
 
 /* ── Buttons ──────────────────────────────────────────────── */
 .btn-primary {
   width: 100%;
-  padding: 10px 16px;
-  background: var(--accent);
+  padding: 10px 20px;
+  background: var(--fg);
   color: #fff;
   border: none;
-  border-radius: 5px;
+  border-radius: 100px;
   font-size: 13px;
-  font-weight: 600;
-  font-family: 'DM Sans', system-ui, sans-serif;
+  font-weight: 700;
+  font-family: 'Albert Sans', system-ui, sans-serif;
   letter-spacing: 0.01em;
   cursor: pointer;
-  transition: opacity 0.15s, transform 0.1s;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.1s, box-shadow 0.2s;
 }
 
 .btn-primary:hover:not(:disabled) {
-  opacity: 0.88;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-to) 100%);
   transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(255, 51, 102, 0.25);
 }
 
 .btn-primary:active:not(:disabled) {
-  transform: translateY(0);
-  opacity: 1;
+  transform: translateY(0) scale(0.98);
 }
 
 .btn-primary:disabled {
-  opacity: 0.2;
+  opacity: 0.3;
   cursor: not-allowed;
 }
 
 .btn-secondary {
   width: 100%;
-  padding: 9px 16px;
+  padding: 9px 20px;
   background: transparent;
   color: var(--fg-2);
-  border: 1px solid var(--border-2);
-  border-radius: 5px;
+  border: 1.5px solid var(--border-2);
+  border-radius: 100px;
   font-size: 12px;
-  font-weight: 400;
-  font-family: 'DM Sans', system-ui, sans-serif;
+  font-weight: 600;
+  font-family: 'Albert Sans', system-ui, sans-serif;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition: border-color 0.15s, color 0.15s, box-shadow 0.15s;
 }
 
 .btn-secondary:hover:not(:disabled) {
-  border-color: rgba(255, 42, 42, 0.4);
+  border-color: rgba(255, 51, 102, 0.4);
   color: var(--fg);
+  box-shadow: 0 2px 10px rgba(255, 51, 102, 0.1);
 }
 
 .btn-secondary:disabled {
-  opacity: 0.25;
+  opacity: 0.3;
   cursor: not-allowed;
 }
 
@@ -299,23 +304,24 @@
   border: none;
   color: var(--muted-2);
   cursor: pointer;
-  padding: 3px 7px;
-  border-radius: 4px;
+  padding: 4px 8px;
+  border-radius: 100px;
   font-size: 12px;
+  font-weight: 500;
   line-height: 1;
   transition: color 0.15s, background 0.15s;
 }
 
 .btn-ghost:hover {
   color: var(--fg);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-2);
 }
 
 /* ── Error banner ─────────────────────────────────────────── */
 .error-banner {
   background: var(--error-dim);
-  border: 1px solid rgba(255, 42, 42, 0.25);
-  border-radius: 5px;
+  border: 1px solid rgba(255, 51, 102, 0.2);
+  border-radius: 8px;
   padding: 10px 12px;
   font-size: 11.5px;
   color: var(--error);
@@ -343,11 +349,12 @@
   max-width: 100%;
   max-height: 58vh;
   height: auto;
-  border-radius: 6px;
-  background: var(--surface);
+  border-radius: 10px;
+  background: var(--surface-2);
   display: block;
   image-rendering: auto;
   border: 1px solid var(--border);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
 }
 
 .sprite-player__controls {
@@ -356,16 +363,17 @@
   gap: 10px;
   width: 100%;
   max-width: 560px;
-  background: var(--surface-2);
+  background: var(--surface);
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: 100px;
   border: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
 }
 
 .sprite-player__playbtn {
-  background: var(--surface-3);
+  background: var(--surface-2);
   border: 1px solid var(--border-2);
-  border-radius: 4px;
+  border-radius: 50%;
   color: var(--fg-2);
   font-size: 12px;
   width: 32px;
@@ -375,12 +383,13 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: border-color 0.15s, color 0.15s;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
 
 .sprite-player__playbtn:hover {
-  border-color: rgba(255, 42, 42, 0.45);
-  color: var(--accent);
+  background: var(--fg);
+  border-color: var(--fg);
+  color: #fff;
 }
 
 .sprite-player__scrubber {

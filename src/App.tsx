@@ -168,8 +168,8 @@ export default function App() {
       <header className="app-header">
         <div className="app-header__brand">
           <div className="brand-icon">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="5 3 19 12 5 21 5 3" fill="currentColor" stroke="none"/>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+              <polygon points="5 3 19 12 5 21 5 3" fill="white"/>
             </svg>
           </div>
           <h1>VIDEO<span className="brand-accent">2</span>SPRITE</h1>
