@@ -64,6 +64,7 @@ export async function demuxFile(file: File): Promise<DemuxResult> {
     interface Mp4InfoTrack {
       id: number;
       codec: string;
+      type?: 'audio' | 'video' | 'subtitles' | 'metadata';
       timescale: number;
       duration: number;
       nb_samples: number;
@@ -76,10 +77,24 @@ export async function demuxFile(file: File): Promise<DemuxResult> {
       reject(new Error(`mp4box parse error: ${typeof err === 'string' ? err : JSON.stringify(err)}`));
     };
 
-    (mp4 as unknown as { onReady: (info: { videoTracks: Mp4InfoTrack[] }) => void }).onReady = (info) => {
-      const vt = info.videoTracks?.[0];
+    (mp4 as unknown as {
+      onReady: (info: { videoTracks: Mp4InfoTrack[]; tracks: Mp4InfoTrack[] }) => void;
+    }).onReady = (info) => {
+      // mp4box sometimes leaves tracks it doesn't recognize out of `videoTracks`
+      // (e.g. ProRes). Fall back to scanning all tracks by handler type so the
+      // capability probe can report the real codec name instead of a vague
+      // "no video track" error.
+      const vt: Mp4InfoTrack | undefined =
+        info.videoTracks?.[0] ?? info.tracks?.find((t) => t.type === 'video');
       if (!vt) {
-        reject(new Error('No video track found in file.'));
+        const trackSummary = (info.tracks ?? [])
+          .map((t) => `${t.type ?? '?'}/${t.codec || '?'}`)
+          .join(', ');
+        reject(
+          new Error(
+            `No decodable video track found. The file may use a codec mp4box.js can't parse (e.g., Apple ProRes). Try H.264 / H.265 / VP9 / AV1. Tracks seen: ${trackSummary || 'none'}.`,
+          ),
+        );
         return;
       }
       videoTrackId = vt.id;

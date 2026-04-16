@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 
+# Local test videos — kept out of git, too large
+test/
+*.mp4
+*.mov
+*.m4v
+*.webm
+*.mkv
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
