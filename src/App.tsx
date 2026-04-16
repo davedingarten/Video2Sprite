@@ -11,11 +11,12 @@ import { extractFrames } from './lib/video/extract';
 import { autoOptimize } from './lib/spritesheet/auto-optimize';
 import { computeLayout } from './lib/spritesheet/layout';
 import { canvasToImageData, createCompositor } from './lib/spritesheet/compositor';
+import { encodeJpeg } from './lib/export/jpeg';
+import { encodePng } from './lib/export/png';
 import type { GridLayout, ScaleMode } from './types';
 import './App.css';
 import './components/components.css';
 
-// Tile dimensions derived from scale mode + source dimensions.
 function resolveTile(
   scaleMode: ScaleMode,
   srcW: number,
@@ -29,6 +30,11 @@ function resolveTile(
     return { tileWidth: Math.round(scaleMode.height * ar), tileHeight: scaleMode.height };
   }
   return { tileWidth: scaleMode.width, tileHeight: scaleMode.height };
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
+  return `${Math.round(bytes / 1_000)} KB`;
 }
 
 export default function App() {
@@ -49,7 +55,7 @@ export default function App() {
     cols: number; rows: number; tileW: number; tileH: number; padding: number; w: number; h: number;
   } | null>(null);
   const [overlay, setOverlay] = useState(true);
-  const [showSheet, setShowSheet] = useState(true);
+  const [showSheet, setShowSheet] = useState(false);
   const [settingsLocked, setSettingsLocked] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -59,12 +65,21 @@ export default function App() {
   const timestampsRef = useRef<number[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  // Compressed preview state
+  const [compressedBitmap, setCompressedBitmap] = useState<ImageBitmap | null>(null);
+  const [useCompressed, setUseCompressed] = useState(false);
+  const [compressing, setCompressing] = useState(false);
+  const [compressedBytes, setCompressedBytes] = useState<number | null>(null);
+
   // Export controls
   const [exportFormat, setExportFormat] = useState<'jpeg' | 'png'>('jpeg');
   const [jpegQuality, setJpegQuality] = useState(85);
   const [jpegMaxKB, setJpegMaxKB] = useState<number | ''>('');
   const [pngColors, setPngColors] = useState(0);
   const { exportAll, exportMetadata, phase: exportPhase, error: exportError } = useExport();
+
+  // Active bitmap — compressed or raw depending on toggle
+  const activeBitmap = (useCompressed && compressedBitmap) ? compressedBitmap : sheetBitmap;
 
   // When a new file loads, reset range to full duration.
   useEffect(() => {
@@ -73,6 +88,19 @@ export default function App() {
       setEndSec(info.durationSec);
     }
   }, [info]);
+
+  // Clear compressed preview when export settings change
+  useEffect(() => {
+    setCompressedBitmap(prev => { prev?.close(); return null; });
+    setUseCompressed(false);
+    setCompressedBytes(null);
+  }, [exportFormat, jpegQuality, jpegMaxKB, pngColors]);
+
+  function clearCompressed() {
+    setCompressedBitmap(prev => { prev?.close(); return null; });
+    setUseCompressed(false);
+    setCompressedBytes(null);
+  }
 
   function unlockSettings() {
     setSettingsLocked(false);
@@ -84,6 +112,7 @@ export default function App() {
     timestampsRef.current = [];
     setProgress(null);
     setGenError(null);
+    clearCompressed();
   }
 
   function handleReset() {
@@ -100,6 +129,7 @@ export default function App() {
     sheetImageDataRef.current = null;
     layoutRef.current = null;
     timestampsRef.current = [];
+    clearCompressed();
 
     const { tileWidth, tileHeight } = resolveTile(scaleMode, info.width, info.height);
 
@@ -147,7 +177,7 @@ export default function App() {
         padding: layout.padding, w: layout.sheetWidth, h: layout.sheetHeight,
       });
       setSettingsLocked(true);
-      setShowSheet(true);
+      setShowSheet(false); // default to animation view
       setProgress(null);
     } catch (err) {
       setGenError((err as Error).message);
@@ -157,16 +187,47 @@ export default function App() {
     }
   }
 
-  // Redraw canvas with optional tile-grid overlay whenever bitmap changes or sheet view is shown.
+  async function previewCompression() {
+    if (!sheetImageDataRef.current) return;
+    setCompressing(true);
+    try {
+      let blob: Blob;
+      let bytes: number;
+      if (exportFormat === 'jpeg') {
+        const result = await encodeJpeg(sheetImageDataRef.current, {
+          quality: jpegQuality,
+          maxBytes: jpegMaxKB ? Number(jpegMaxKB) * 1024 : undefined,
+        });
+        blob = result.blob;
+        bytes = result.bytes;
+      } else {
+        const result = await encodePng(sheetImageDataRef.current, {
+          colors: pngColors || undefined,
+        });
+        blob = result.blob;
+        bytes = result.bytes;
+      }
+      const bitmap = await createImageBitmap(blob);
+      setCompressedBitmap(prev => { prev?.close(); return bitmap; });
+      setCompressedBytes(bytes);
+      setUseCompressed(true);
+    } catch (_err) {
+      // compression errors are non-fatal for preview
+    } finally {
+      setCompressing(false);
+    }
+  }
+
+  // Redraw canvas whenever the active bitmap, overlay, or sheet view changes.
   useEffect(() => {
     if (!showSheet) return;
     const canvas = canvasRef.current;
-    if (!canvas || !sheetBitmap || !sheetInfo) return;
-    canvas.width = sheetBitmap.width;
-    canvas.height = sheetBitmap.height;
+    if (!canvas || !activeBitmap || !sheetInfo) return;
+    canvas.width = activeBitmap.width;
+    canvas.height = activeBitmap.height;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.drawImage(sheetBitmap, 0, 0);
+    ctx.drawImage(activeBitmap, 0, 0);
     if (overlay) {
       ctx.strokeStyle = 'rgba(255,51,102,0.4)';
       ctx.lineWidth = 1;
@@ -179,7 +240,7 @@ export default function App() {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(sheetInfo.w, y); ctx.stroke();
       }
     }
-  }, [sheetBitmap, sheetInfo, overlay, showSheet]);
+  }, [activeBitmap, sheetInfo, overlay, showSheet]);
 
   const isReady = status === 'ready';
 
@@ -309,6 +370,19 @@ export default function App() {
                       </div>
                     )}
 
+                    <div className="compress-row">
+                      <button
+                        className="btn-secondary"
+                        disabled={busy || compressing}
+                        onClick={previewCompression}
+                      >
+                        {compressing ? 'Compressing…' : 'Preview compression'}
+                      </button>
+                      {compressedBytes !== null && (
+                        <span className="compress-size">{formatBytes(compressedBytes)}</span>
+                      )}
+                    </div>
+
                     {exportError && <div className="error-banner" style={{ marginTop: 8 }}>{exportError}</div>}
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
@@ -367,31 +441,46 @@ export default function App() {
         {/* ── Preview pane ── */}
         <section className="preview-pane" aria-label="Preview">
           {sheetBitmap && sheetInfo && layoutRef.current ? (
-            <div className="preview-content">
+            <>
               <div className="preview-toolbar">
                 <span className="preview-info">
-                  {sheetInfo.w}×{sheetInfo.h} · {sheetInfo.cols}×{sheetInfo.rows} grid
+                  {sheetInfo.w}×{sheetInfo.h}
+                  <span className="preview-info__sep">·</span>
+                  {sheetInfo.cols}×{sheetInfo.rows} grid
+                  {useCompressed && compressedBytes !== null && (
+                    <span className="preview-info__badge">{formatBytes(compressedBytes)}</span>
+                  )}
                 </span>
-                <div className="view-toggle">
-                  <button
-                    className={`view-toggle__btn${showSheet ? ' view-toggle__btn--active' : ''}`}
-                    onClick={() => setShowSheet(true)}
-                  >
-                    Sheet
-                  </button>
-                  <button
-                    className={`view-toggle__btn${!showSheet ? ' view-toggle__btn--active' : ''}`}
-                    onClick={() => setShowSheet(false)}
-                  >
-                    Animate
-                  </button>
+                <div className="preview-toolbar__right">
+                  {showSheet && (
+                    <label className="grid-overlay-label">
+                      <input type="checkbox" checked={overlay} onChange={(e) => setOverlay(e.target.checked)} />
+                      Grid
+                    </label>
+                  )}
+                  {compressedBitmap && (
+                    <div className="view-toggle">
+                      <button
+                        className={`view-toggle__btn${!useCompressed ? ' view-toggle__btn--active' : ''}`}
+                        onClick={() => setUseCompressed(false)}
+                      >Original</button>
+                      <button
+                        className={`view-toggle__btn${useCompressed ? ' view-toggle__btn--active' : ''}`}
+                        onClick={() => setUseCompressed(true)}
+                      >Compressed</button>
+                    </div>
+                  )}
+                  <div className="view-toggle">
+                    <button
+                      className={`view-toggle__btn${!showSheet ? ' view-toggle__btn--active' : ''}`}
+                      onClick={() => setShowSheet(false)}
+                    >Animate</button>
+                    <button
+                      className={`view-toggle__btn${showSheet ? ' view-toggle__btn--active' : ''}`}
+                      onClick={() => setShowSheet(true)}
+                    >Sheet</button>
+                  </div>
                 </div>
-                {showSheet && (
-                  <label className="grid-overlay-label">
-                    <input type="checkbox" checked={overlay} onChange={(e) => setOverlay(e.target.checked)} />
-                    Grid
-                  </label>
-                )}
               </div>
 
               <div className="preview-frame">
@@ -401,7 +490,7 @@ export default function App() {
                   const actualFps = fc > 1 && dur > 0 ? fc / dur : targetFps;
                   return (
                     <SpritePlayer
-                      bitmap={sheetBitmap}
+                      bitmap={activeBitmap!}
                       layout={layoutRef.current!}
                       fps={actualFps}
                       frameCount={fc || sheetInfo.cols * sheetInfo.rows}
@@ -414,11 +503,13 @@ export default function App() {
                   />
                 )}
               </div>
-            </div>
+            </>
           ) : (
-            <p className="placeholder">
-              {isReady ? 'Configure controls and click Generate preview.' : 'Upload a video to get started.'}
-            </p>
+            <div className="preview-empty">
+              <p className="placeholder">
+                {isReady ? 'Configure controls and click Generate preview.' : 'Upload a video to get started.'}
+              </p>
+            </div>
           )}
         </section>
       </main>

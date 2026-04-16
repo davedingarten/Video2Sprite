@@ -443,6 +443,27 @@ input[type="checkbox"]:focus {
   box-shadow: 0 0 0 3px rgba(255, 51, 102, 0.12);
 }
 
+/* ── Compress preview row ─────────────────────────────────── */
+.compress-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.compress-row .btn-secondary {
+  flex: 1;
+}
+
+.compress-size {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  color: var(--accent);
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 /* ── Field value display ──────────────────────────────────── */
 .field-value {
   font-family: 'JetBrains Mono', monospace;
