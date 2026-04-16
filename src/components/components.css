@@ -329,6 +329,129 @@
   line-height: 1.5;
 }
 
+/* ── View toggle ──────────────────────────────────────────── */
+.view-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 3px;
+}
+
+.view-toggle__btn {
+  padding: 5px 16px;
+  border: none;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Albert Sans', system-ui, sans-serif;
+  cursor: pointer;
+  background: transparent;
+  color: var(--muted-2);
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  line-height: 1;
+}
+
+.view-toggle__btn--active {
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+
+.view-toggle__btn:not(.view-toggle__btn--active):hover {
+  color: var(--fg-2);
+}
+
+/* ── Settings lock ────────────────────────────────────────── */
+.settings-locked {
+  opacity: 0.4;
+  pointer-events: none;
+  user-select: none;
+}
+
+.settings-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.settings-status span {
+  font-size: 11.5px;
+  color: var(--muted-2);
+  font-weight: 500;
+}
+
+.settings-status__edit {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  transition: opacity 0.15s;
+}
+
+.settings-status__edit:hover {
+  opacity: 0.75;
+}
+
+/* ── Custom checkbox ──────────────────────────────────────── */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid var(--border-2);
+  border-radius: 4px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  flex-shrink: 0;
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1.5px;
+  width: 4px;
+  height: 7px;
+  border: 1.5px solid #fff;
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg);
+}
+
+input[type="checkbox"]:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 51, 102, 0.12);
+}
+
+/* ── Field value display ──────────────────────────────────── */
+.field-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  color: var(--muted-2);
+  min-width: 32px;
+  text-align: right;
+}
+
 /* ── Divider ──────────────────────────────────────────────── */
 .divider {
   border: none;

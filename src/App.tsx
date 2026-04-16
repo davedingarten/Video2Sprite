@@ -40,7 +40,7 @@ export default function App() {
   const [targetFps, setTargetFps] = useState(10);
   const [scaleMode, setScaleMode] = useState<ScaleMode>({ kind: 'fit-width', width: 320 });
   const [columns, setColumns] = useState(6);
-  const [padding, setPadding] = useState(2);
+  const [padding, setPadding] = useState(0);
   const [autoOptimizeGrid, setAutoOptimizeGrid] = useState(true);
 
   // Sheet state
@@ -49,7 +49,8 @@ export default function App() {
     cols: number; rows: number; tileW: number; tileH: number; padding: number; w: number; h: number;
   } | null>(null);
   const [overlay, setOverlay] = useState(true);
-  const [showSheet, setShowSheet] = useState(false);
+  const [showSheet, setShowSheet] = useState(true);
+  const [settingsLocked, setSettingsLocked] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ phase: string; drawn: number; total: number } | null>(null);
@@ -72,6 +73,23 @@ export default function App() {
       setEndSec(info.durationSec);
     }
   }, [info]);
+
+  function unlockSettings() {
+    setSettingsLocked(false);
+    sheetBitmap?.close();
+    setSheetBitmap(null);
+    setSheetInfo(null);
+    sheetImageDataRef.current = null;
+    layoutRef.current = null;
+    timestampsRef.current = [];
+    setProgress(null);
+    setGenError(null);
+  }
+
+  function handleReset() {
+    reset();
+    unlockSettings();
+  }
 
   async function generateSheet() {
     if (!file || !info) return;
@@ -128,6 +146,8 @@ export default function App() {
         tileW: layout.tileWidth, tileH: layout.tileHeight,
         padding: layout.padding, w: layout.sheetWidth, h: layout.sheetHeight,
       });
+      setSettingsLocked(true);
+      setShowSheet(true);
       setProgress(null);
     } catch (err) {
       setGenError((err as Error).message);
@@ -148,7 +168,7 @@ export default function App() {
     if (!ctx) return;
     ctx.drawImage(sheetBitmap, 0, 0);
     if (overlay) {
-      ctx.strokeStyle = 'rgba(80,140,255,0.5)';
+      ctx.strokeStyle = 'rgba(255,51,102,0.4)';
       ctx.lineWidth = 1;
       for (let c = 0; c <= sheetInfo.cols; c++) {
         const x = sheetInfo.padding + c * (sheetInfo.tileW + sheetInfo.padding) - 0.5;
@@ -174,17 +194,6 @@ export default function App() {
           </div>
           <h1>VIDEO<span className="brand-accent">2</span>SPRITE</h1>
         </div>
-        <div className="app-header__actions">
-          {sheetBitmap && (
-            <button
-              className="btn-ghost"
-              onClick={() => setShowSheet(s => !s)}
-              title={showSheet ? 'Switch to animation view' : 'Switch to sheet view'}
-            >
-              {showSheet ? '▶ Animation' : '⊞ Sheet'}
-            </button>
-          )}
-        </div>
       </header>
       <main className="app-body">
         {/* ── Controls pane ── */}
@@ -201,37 +210,52 @@ export default function App() {
 
           {isReady && info && (
             <>
-              <FileInfoPanel info={info} onReset={reset} />
+              <FileInfoPanel info={info} onReset={handleReset} />
               <hr className="divider" />
-              <RangeControls
-                duration={info.durationSec}
-                startSec={startSec}
-                endSec={endSec}
-                onChange={(s, e) => { setStartSec(s); setEndSec(e); }}
-              />
-              <SamplingControls
-                targetFps={targetFps}
-                scaleMode={scaleMode}
-                sourceWidth={info.width}
-                sourceHeight={info.height}
-                onFpsChange={setTargetFps}
-                onScaleModeChange={setScaleMode}
-              />
-              <GridControls
-                columns={columns}
-                padding={padding}
-                autoOptimize={autoOptimizeGrid}
-                onColumnsChange={setColumns}
-                onPaddingChange={setPadding}
-                onAutoOptimizeChange={setAutoOptimizeGrid}
-              />
-              <hr className="divider" />
-              {genError && <div className="error-banner">{genError}</div>}
-              <button className="btn-primary" onClick={generateSheet} disabled={busy}>
-                {busy && progress
-                  ? `${progress.phase}${progress.total > 0 ? ` ${progress.drawn}/${progress.total}` : ''}`
-                  : 'Generate preview'}
-              </button>
+
+              {settingsLocked && (
+                <div className="settings-status">
+                  <span>✓ Preview ready</span>
+                  <button className="settings-status__edit" onClick={unlockSettings}>Edit settings</button>
+                </div>
+              )}
+
+              <div className={settingsLocked ? 'settings-locked' : ''}>
+                <RangeControls
+                  duration={info.durationSec}
+                  startSec={startSec}
+                  endSec={endSec}
+                  onChange={(s, e) => { setStartSec(s); setEndSec(e); }}
+                />
+                <SamplingControls
+                  targetFps={targetFps}
+                  scaleMode={scaleMode}
+                  sourceWidth={info.width}
+                  sourceHeight={info.height}
+                  onFpsChange={setTargetFps}
+                  onScaleModeChange={setScaleMode}
+                />
+                <GridControls
+                  columns={columns}
+                  padding={padding}
+                  autoOptimize={autoOptimizeGrid}
+                  onColumnsChange={setColumns}
+                  onPaddingChange={setPadding}
+                  onAutoOptimizeChange={setAutoOptimizeGrid}
+                />
+              </div>
+
+              {!settingsLocked && (
+                <>
+                  <hr className="divider" />
+                  {genError && <div className="error-banner">{genError}</div>}
+                  <button className="btn-primary" onClick={generateSheet} disabled={busy}>
+                    {busy && progress
+                      ? `${progress.phase}${progress.total > 0 ? ` ${progress.drawn}/${progress.total}` : ''}`
+                      : 'Generate preview'}
+                  </button>
+                </>
+              )}
 
               {sheetBitmap && (
                 <>
@@ -260,7 +284,7 @@ export default function App() {
                             onChange={(e) => setJpegQuality(Number(e.target.value))}
                             className="slider"
                           />
-                          <span style={{ width: 28, fontSize: 12 }}>{jpegQuality}</span>
+                          <span className="field-value">{jpegQuality}</span>
                         </div>
                         <div className="field-row">
                           <label>Max KB</label>
@@ -281,7 +305,7 @@ export default function App() {
                           onChange={(e) => setPngColors(Number(e.target.value))}
                           className="slider"
                         />
-                        <span style={{ width: 44, fontSize: 12 }}>{pngColors === 0 ? 'full' : pngColors}</span>
+                        <span className="field-value">{pngColors === 0 ? 'full' : pngColors}</span>
                       </div>
                     )}
 
@@ -341,41 +365,56 @@ export default function App() {
         </aside>
 
         {/* ── Preview pane ── */}
-        <section className="preview-pane" aria-label="Preview" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 0 }}>
+        <section className="preview-pane" aria-label="Preview">
           {sheetBitmap && sheetInfo && layoutRef.current ? (
-            <>
-              {/* Info bar */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexShrink: 0 }}>
-                <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+            <div className="preview-content">
+              <div className="preview-toolbar">
+                <span className="preview-info">
                   {sheetInfo.w}×{sheetInfo.h} · {sheetInfo.cols}×{sheetInfo.rows} grid
                 </span>
+                <div className="view-toggle">
+                  <button
+                    className={`view-toggle__btn${showSheet ? ' view-toggle__btn--active' : ''}`}
+                    onClick={() => setShowSheet(true)}
+                  >
+                    Sheet
+                  </button>
+                  <button
+                    className={`view-toggle__btn${!showSheet ? ' view-toggle__btn--active' : ''}`}
+                    onClick={() => setShowSheet(false)}
+                  >
+                    Animate
+                  </button>
+                </div>
                 {showSheet && (
-                  <label style={{ fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', color: 'var(--muted)' }}>
+                  <label className="grid-overlay-label">
                     <input type="checkbox" checked={overlay} onChange={(e) => setOverlay(e.target.checked)} />
-                    Grid overlay
+                    Grid
                   </label>
                 )}
               </div>
 
-              {!showSheet ? (() => {
-                const fc = timestampsRef.current.length;
-                const dur = endSec - startSec;
-                const actualFps = fc > 1 && dur > 0 ? fc / dur : targetFps;
-                return (
-                  <SpritePlayer
-                    bitmap={sheetBitmap}
-                    layout={layoutRef.current!}
-                    fps={actualFps}
-                    frameCount={fc || sheetInfo.cols * sheetInfo.rows}
+              <div className="preview-frame">
+                {!showSheet ? (() => {
+                  const fc = timestampsRef.current.length;
+                  const dur = endSec - startSec;
+                  const actualFps = fc > 1 && dur > 0 ? fc / dur : targetFps;
+                  return (
+                    <SpritePlayer
+                      bitmap={sheetBitmap}
+                      layout={layoutRef.current!}
+                      fps={actualFps}
+                      frameCount={fc || sheetInfo.cols * sheetInfo.rows}
+                    />
+                  );
+                })() : (
+                  <canvas
+                    ref={canvasRef}
+                    style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 140px)', width: 'auto', height: 'auto', display: 'block' }}
                   />
-                );
-              })() : (
-                <canvas
-                  ref={canvasRef}
-                  style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 100px)', width: 'auto', height: 'auto', display: 'block', alignSelf: 'flex-start' }}
-                />
-              )}
-            </>
+                )}
+              </div>
+            </div>
           ) : (
             <p className="placeholder">
               {isReady ? 'Configure controls and click Generate preview.' : 'Upload a video to get started.'}
