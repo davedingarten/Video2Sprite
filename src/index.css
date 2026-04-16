@@ -1,12 +1,25 @@
-:root {
-  --bg: #0f1115;
-  --fg: #e6e7ea;
-  --muted: #8a8f98;
-  --border: #242833;
-  --accent: #4f8cff;
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&family=JetBrains+Mono:wght@400;500&display=swap');
 
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+:root {
+  --bg:          #0A0A0A;
+  --surface:     #111111;
+  --surface-2:   #181818;
+  --surface-3:   #202020;
+  --fg:          #F2F2F2;
+  --fg-2:        #A8A8A8;
+  --muted:       #4A4A4A;
+  --muted-2:     #6E6E6E;
+  --border:      #1E1E1E;
+  --border-2:    #282828;
+  --accent:      #FF2A2A;
+  --accent-dim:  rgba(255, 42, 42, 0.08);
+  --accent-glow: rgba(255, 42, 42, 0.18);
+  --error:       #FF2A2A;
+  --error-dim:   rgba(255, 42, 42, 0.08);
+
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
   font-size: 14px;
+  font-weight: 400;
   color: var(--fg);
   background: var(--bg);
   color-scheme: dark;

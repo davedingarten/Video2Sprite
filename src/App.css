@@ -3,42 +3,91 @@
   flex-direction: column;
   height: 100vh;
   width: 100vw;
+  overflow: hidden;
 }
 
 .app-header {
-  padding: 12px 20px;
+  padding: 0 24px;
+  height: 52px;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  background: var(--bg);
+}
+
+.app-header__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: var(--accent);
+  border-radius: 4px;
+  color: #fff;
+  flex-shrink: 0;
 }
 
 .app-header h1 {
-  font-size: 16px;
-  font-weight: 600;
+  font-family: 'Bebas Neue', system-ui, sans-serif;
+  font-size: 22px;
+  font-weight: 400;
   margin: 0;
+  letter-spacing: 0.04em;
   color: var(--fg);
+  line-height: 1;
+}
+
+.brand-accent {
+  color: var(--accent);
+}
+
+.app-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .app-body {
   display: grid;
-  grid-template-columns: 360px 1fr;
+  grid-template-columns: 316px 1fr;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .controls-pane {
   border-right: 1px solid var(--border);
-  padding: 16px;
+  padding: 20px 16px;
   overflow-y: auto;
+  background: var(--surface);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-2) transparent;
 }
 
+.controls-pane::-webkit-scrollbar { width: 4px; }
+.controls-pane::-webkit-scrollbar-track { background: transparent; }
+.controls-pane::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 2px; }
+
 .preview-pane {
-  padding: 16px;
+  padding: 24px;
   overflow: auto;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: var(--bg);
 }
 
 .placeholder {
-  color: var(--muted);
-  font-size: 14px;
+  color: var(--muted-2);
+  font-size: 13px;
+  font-weight: 300;
+  letter-spacing: 0.01em;
 }

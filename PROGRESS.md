@@ -37,47 +37,47 @@ Goal: given an MP4 file, start/end, and target fps, produce `VideoFrame`s at req
 
 ---
 
-## Phase 3 — Sprite sheet compositor `[ ]`
+## Phase 3 — Sprite sheet compositor `[x]`
 
 Goal: stream of `VideoFrame`s → single composed canvas.
 
-- [ ] `lib/spritesheet/layout.ts` — manual grid (cols + padding → rows, sheet dims)
-- [ ] `lib/spritesheet/auto-optimize.ts` — pick column count keeping sheet ≤ 4096×4096 with minimum empty tiles
-- [ ] `lib/spritesheet/compositor.ts` — `OffscreenCanvas` when available, `HTMLCanvasElement` fallback; draw each frame into its tile with padding; close `VideoFrame` immediately after draw
-- [ ] `hooks/useSpriteSheet.ts` — wires decoder stream → compositor, exposes progress
+- [x] `lib/spritesheet/layout.ts` — manual grid (cols + padding → rows, sheet dims)
+- [x] `lib/spritesheet/auto-optimize.ts` — pick column count keeping sheet ≤ 4096×4096 with minimum empty tiles
+- [x] `lib/spritesheet/compositor.ts` — `OffscreenCanvas` when available, `HTMLCanvasElement` fallback; draw each frame into its tile with padding; close `VideoFrame` immediately after draw
+- [x] `hooks/useSpriteSheet.ts` — wires decoder stream → compositor, exposes progress
 
-**Verify:** render a sheet to a canvas and show it in the preview pane; tile boundaries visible; no memory growth.
-
----
-
-## Phase 4 — Export pipeline `[ ]`
-
-Goal: produce downloadable blobs for all exports.
-
-- [ ] `lib/export/png.ts` — canvas → PNG blob
-- [ ] `lib/export/jpeg.ts` — canvas → JPEG blob with quality slider; optional max-file-size cap via binary-search on quality
-- [ ] `lib/export/stills.ts` — first and last `VideoFrame` at 2× tile size (re-decode or cache); same format/quality controls as sheet
-- [ ] `lib/export/metadata.ts` — JSON: `{ sheet: {w,h}, tile: {w,h}, padding, columns, rows, fps, codec, container, frames: [{index, x, y, width, height, timestampMs}] }`
-- [ ] `lib/export/snippet.ts` — CSS keyframes animation + tiny JS frame-stepper
-- [ ] `hooks/useExport.ts` — triggers browser downloads via `URL.createObjectURL` + `<a download>`
-
-**Verify:** all blobs open/validate correctly; animation snippet plays in a test HTML file; JPEG max-size cap actually converges.
+**Verified:** sheet renders in preview pane, tiles align with grid overlay, repeated runs don't grow memory.
 
 ---
 
-## Phase 5 — UI shell and controls `[ ]`
+## Phase 4 — Export pipeline `[x]`
+
+Goal: produce downloadable blobs for all exports. Compression must match the CLI's quality (mozjpeg for JPEG, oxipng for PNG).
+
+- [x] `lib/export/jpeg.ts` — **mozjpeg via `@jsquash/jpeg`**; quality slider; binary-search max-size cap; canvas fallback
+- [x] `lib/export/png.ts` — **oxipng lossless** + **UPNG.js palette quantization** (2–256 colors, Floyd–Steinberg dither); oxipng post-pass on quantized output
+- [x] `lib/export/stills.ts` — first and last frames of the selected range at 2× tile size; same format/quality controls as sheet
+- [x] `lib/export/metadata.ts` — JSON: `{ sheet: {w,h}, tile: {w,h}, padding, columns, rows, fps, codec, container, frames: [{index, x, y, width, height, timestampMs}] }`
+- [x] `lib/export/snippet.ts` — CSS keyframes animation + tiny JS frame-stepper + demo HTML
+- [x] `hooks/useExport.ts` — `exportAll` (sheet + stills + snippet) and `exportMetadata` (JSON only); downloads via `URL.createObjectURL` + `<a download>`
+
+**Verified:** build clean, all modules type-check, JPEG/PNG compression visible in test harness.
+
+---
+
+## Phase 5 — UI shell and controls `[x]`
 
 Goal: all controls visible, file info populates after upload. Can run in parallel with phases 2–4.
 
-- [ ] `components/Uploader.tsx` — drag/drop + file picker
-- [ ] `components/FileInfoPanel.tsx` — filename, size, container, codec, resolution, source fps, duration
-- [ ] `components/RangeControls.tsx` — start/end time sliders with numeric input
-- [ ] `components/SamplingControls.tsx` — target fps, scale mode (fit-width / fit-height / explicit w×h)
-- [ ] `components/GridControls.tsx` — columns, padding, auto-optimize toggle
-- [ ] `hooks/useVideoFile.ts` — upload → demuxer → metadata state
-- [ ] Minimal clean styling (CSS modules or similar)
+- [x] `components/Uploader.tsx` — drag/drop + file picker
+- [x] `components/FileInfoPanel.tsx` — filename, size, container, codec, resolution, source fps, duration
+- [x] `components/RangeControls.tsx` — start/end time sliders with numeric input
+- [x] `components/SamplingControls.tsx` — target fps, scale mode (fit-width / fit-height / explicit w×h)
+- [x] `components/GridControls.tsx` — columns, padding, auto-optimize toggle
+- [x] `hooks/useVideoFile.ts` — upload → demuxer → metadata state
+- [x] Minimal clean styling (`components/components.css` with CSS variables)
 
-**Verify:** upload a file, all info populates correctly, all controls are interactive.
+**Verified:** upload populates file info, all controls interactive, Generate preview runs and displays sheet.
 
 ---
 
