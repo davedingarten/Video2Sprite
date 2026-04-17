@@ -3,7 +3,7 @@ import { useVideoFile } from './hooks/useVideoFile';
 import { useExport } from './hooks/useExport';
 import { Uploader } from './components/Uploader';
 import { FileInfoPanel } from './components/FileInfoPanel';
-import { RangeControls } from './components/RangeControls';
+import { TimelineRangeControls } from './components/TimelineRangeControls';
 import { SamplingControls } from './components/SamplingControls';
 import { GridControls } from './components/GridControls';
 import { SpritePlayer } from './components/SpritePlayer';
@@ -37,6 +37,20 @@ function formatBytes(bytes: number): string {
   return `${Math.round(bytes / 1_000)} KB`;
 }
 
+function openBitmapInNewTab(bitmap: ImageBitmap) {
+  const c = document.createElement('canvas');
+  c.width = bitmap.width;
+  c.height = bitmap.height;
+  c.getContext('2d')!.drawImage(bitmap, 0, 0);
+  c.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    // Keep URL alive long enough for the new tab to load it
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  });
+}
+
 export default function App() {
   const { file, info, status, error: fileError, load, reset } = useVideoFile();
 
@@ -64,22 +78,20 @@ export default function App() {
   const layoutRef = useRef<GridLayout | null>(null);
   const timestampsRef = useRef<number[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasRefCompressed = useRef<HTMLCanvasElement>(null);
 
   // Compressed preview state
   const [compressedBitmap, setCompressedBitmap] = useState<ImageBitmap | null>(null);
-  const [useCompressed, setUseCompressed] = useState(false);
   const [compressing, setCompressing] = useState(false);
   const [compressedBytes, setCompressedBytes] = useState<number | null>(null);
+  const [compressProgress, setCompressProgress] = useState<{ i: number; n: number } | null>(null);
 
   // Export controls
   const [exportFormat, setExportFormat] = useState<'jpeg' | 'png'>('jpeg');
   const [jpegQuality, setJpegQuality] = useState(85);
   const [jpegMaxKB, setJpegMaxKB] = useState<number | ''>('');
   const [pngColors, setPngColors] = useState(0);
-  const { exportAll, exportMetadata, phase: exportPhase, error: exportError } = useExport();
-
-  // Active bitmap — compressed or raw depending on toggle
-  const activeBitmap = (useCompressed && compressedBitmap) ? compressedBitmap : sheetBitmap;
+  const { exportAll, phase: exportPhase, error: exportError } = useExport();
 
   // When a new file loads, reset range to full duration.
   useEffect(() => {
@@ -92,13 +104,11 @@ export default function App() {
   // Clear compressed preview when export settings change
   useEffect(() => {
     setCompressedBitmap(prev => { prev?.close(); return null; });
-    setUseCompressed(false);
     setCompressedBytes(null);
   }, [exportFormat, jpegQuality, jpegMaxKB, pngColors]);
 
   function clearCompressed() {
     setCompressedBitmap(prev => { prev?.close(); return null; });
-    setUseCompressed(false);
     setCompressedBytes(null);
   }
 
@@ -190,13 +200,15 @@ export default function App() {
   async function previewCompression() {
     if (!sheetImageDataRef.current) return;
     setCompressing(true);
+    setCompressProgress(null);
     try {
       let blob: Blob;
       let bytes: number;
       if (exportFormat === 'jpeg') {
         const result = await encodeJpeg(sheetImageDataRef.current, {
           quality: jpegQuality,
-          maxBytes: jpegMaxKB ? Number(jpegMaxKB) * 1024 : undefined,
+          maxBytes: jpegMaxKB ? Number(jpegMaxKB) * 1000 : undefined,
+          onProgress: (i, n) => setCompressProgress({ i, n }),
         });
         blob = result.blob;
         bytes = result.bytes;
@@ -210,37 +222,42 @@ export default function App() {
       const bitmap = await createImageBitmap(blob);
       setCompressedBitmap(prev => { prev?.close(); return bitmap; });
       setCompressedBytes(bytes);
-      setUseCompressed(true);
     } catch (_err) {
       // compression errors are non-fatal for preview
     } finally {
       setCompressing(false);
+      setCompressProgress(null);
     }
   }
 
-  // Redraw canvas whenever the active bitmap, overlay, or sheet view changes.
+  // Redraw canvases whenever bitmap, overlay, or sheet view changes.
   useEffect(() => {
-    if (!showSheet) return;
-    const canvas = canvasRef.current;
-    if (!canvas || !activeBitmap || !sheetInfo) return;
-    canvas.width = activeBitmap.width;
-    canvas.height = activeBitmap.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(activeBitmap, 0, 0);
-    if (overlay) {
-      ctx.strokeStyle = 'rgba(255,51,102,0.4)';
-      ctx.lineWidth = 1;
-      for (let c = 0; c <= sheetInfo.cols; c++) {
-        const x = sheetInfo.padding + c * (sheetInfo.tileW + sheetInfo.padding) - 0.5;
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, sheetInfo.h); ctx.stroke();
-      }
-      for (let r = 0; r <= sheetInfo.rows; r++) {
-        const y = sheetInfo.padding + r * (sheetInfo.tileH + sheetInfo.padding) - 0.5;
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(sheetInfo.w, y); ctx.stroke();
+    if (!showSheet || !sheetInfo) return;
+
+    function draw(canvas: HTMLCanvasElement | null, bitmap: ImageBitmap | null) {
+      if (!canvas || !bitmap) return;
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(bitmap, 0, 0);
+      if (overlay) {
+        ctx.strokeStyle = 'rgba(255,51,102,0.4)';
+        ctx.lineWidth = 1;
+        for (let c = 0; c <= sheetInfo!.cols; c++) {
+          const x = sheetInfo!.padding + c * (sheetInfo!.tileW + sheetInfo!.padding) - 0.5;
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, sheetInfo!.h); ctx.stroke();
+        }
+        for (let r = 0; r <= sheetInfo!.rows; r++) {
+          const y = sheetInfo!.padding + r * (sheetInfo!.tileH + sheetInfo!.padding) - 0.5;
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(sheetInfo!.w, y); ctx.stroke();
+        }
       }
     }
-  }, [activeBitmap, sheetInfo, overlay, showSheet]);
+
+    draw(canvasRef.current, sheetBitmap);
+    draw(canvasRefCompressed.current, compressedBitmap);
+  }, [sheetBitmap, compressedBitmap, sheetInfo, overlay, showSheet]);
 
   const isReady = status === 'ready';
 
@@ -282,10 +299,12 @@ export default function App() {
               )}
 
               <div className={settingsLocked ? 'settings-locked' : ''}>
-                <RangeControls
+                <TimelineRangeControls
+                  file={file!}
                   duration={info.durationSec}
                   startSec={startSec}
                   endSec={endSec}
+                  targetFps={targetFps}
                   onChange={(s, e) => { setStartSec(s); setEndSec(e); }}
                 />
                 <SamplingControls
@@ -350,8 +369,11 @@ export default function App() {
                         <div className="field-row">
                           <label>Max KB</label>
                           <input
-                            type="number" placeholder="none" value={jpegMaxKB}
-                            onChange={(e) => setJpegMaxKB(e.target.value === '' ? '' : Number(e.target.value))}
+                            type="number" min={1} placeholder="none" value={jpegMaxKB}
+                            onChange={(e) => {
+                              if (e.target.value === '') { setJpegMaxKB(''); return; }
+                              setJpegMaxKB(Math.max(1, Number(e.target.value)));
+                            }}
                             className="num-input"
                           />
                         </div>
@@ -376,7 +398,11 @@ export default function App() {
                         disabled={busy || compressing}
                         onClick={previewCompression}
                       >
-                        {compressing ? 'Compressing…' : 'Preview compression'}
+                        {compressing
+                          ? compressProgress
+                            ? `Compressing… ${compressProgress.i}/${compressProgress.n}`
+                            : 'Compressing…'
+                          : 'Preview compression'}
                       </button>
                       {compressedBytes !== null && (
                         <span className="compress-size">{formatBytes(compressedBytes)}</span>
@@ -385,7 +411,7 @@ export default function App() {
 
                     {exportError && <div className="error-banner" style={{ marginTop: 8 }}>{exportError}</div>}
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                    <div style={{ marginTop: 8 }}>
                       <button
                         className="btn-primary"
                         disabled={busy || exportPhase === 'sheet' || exportPhase === 'stills'}
@@ -401,7 +427,7 @@ export default function App() {
                             options: {
                               format: exportFormat,
                               jpegQuality,
-                              maxFileSizeBytes: jpegMaxKB ? Number(jpegMaxKB) * 1024 : undefined,
+                              maxFileSizeBytes: jpegMaxKB ? Number(jpegMaxKB) * 1000 : undefined,
                             },
                             pngColors: exportFormat === 'png' ? pngColors : undefined,
                           });
@@ -413,22 +439,6 @@ export default function App() {
                           : exportPhase === 'snippet' ? 'Building snippet…'
                           : exportPhase === 'zipping' ? 'Zipping…'
                           : 'Export sprite sheet'}
-                      </button>
-                      <button
-                        className="btn-secondary"
-                        disabled={busy || !layoutRef.current}
-                        onClick={() => {
-                          if (!info || !layoutRef.current) return;
-                          exportMetadata({
-                            file: file!,
-                            layout: layoutRef.current,
-                            info,
-                            extract: { startSec, endSec, targetFps },
-                            frameTimestampsMs: timestampsRef.current,
-                          });
-                        }}
-                      >
-                        Export JSON
                       </button>
                     </div>
                   </section>
@@ -447,7 +457,7 @@ export default function App() {
                   {sheetInfo.w}×{sheetInfo.h}
                   <span className="preview-info__sep">·</span>
                   {sheetInfo.cols}×{sheetInfo.rows} grid
-                  {useCompressed && compressedBytes !== null && (
+                  {compressedBytes !== null && (
                     <span className="preview-info__badge">{formatBytes(compressedBytes)}</span>
                   )}
                 </span>
@@ -457,18 +467,6 @@ export default function App() {
                       <input type="checkbox" checked={overlay} onChange={(e) => setOverlay(e.target.checked)} />
                       Grid
                     </label>
-                  )}
-                  {compressedBitmap && (
-                    <div className="view-toggle">
-                      <button
-                        className={`view-toggle__btn${!useCompressed ? ' view-toggle__btn--active' : ''}`}
-                        onClick={() => setUseCompressed(false)}
-                      >Original</button>
-                      <button
-                        className={`view-toggle__btn${useCompressed ? ' view-toggle__btn--active' : ''}`}
-                        onClick={() => setUseCompressed(true)}
-                      >Compressed</button>
-                    </div>
                   )}
                   <div className="view-toggle">
                     <button
@@ -488,19 +486,55 @@ export default function App() {
                   const fc = timestampsRef.current.length;
                   const dur = endSec - startSec;
                   const actualFps = fc > 1 && dur > 0 ? fc / dur : targetFps;
-                  return (
-                    <SpritePlayer
-                      bitmap={activeBitmap!}
-                      layout={layoutRef.current!}
-                      fps={actualFps}
-                      frameCount={fc || sheetInfo.cols * sheetInfo.rows}
-                    />
+                  const playerProps = {
+                    layout: layoutRef.current!,
+                    fps: actualFps,
+                    frameCount: fc || sheetInfo.cols * sheetInfo.rows,
+                  };
+                  return compressedBitmap ? (
+                    <div className="preview-split">
+                      <div className="preview-split__panel">
+                        <span className="preview-split__label">Original</span>
+                        <SpritePlayer bitmap={sheetBitmap} {...playerProps} />
+                      </div>
+                      <div className="preview-split__panel">
+                        <span className="preview-split__label">Compressed</span>
+                        <SpritePlayer bitmap={compressedBitmap} {...playerProps} />
+                      </div>
+                    </div>
+                  ) : (
+                    <SpritePlayer bitmap={sheetBitmap} {...playerProps} />
                   );
                 })() : (
-                  <canvas
-                    ref={canvasRef}
-                    style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 140px)', width: 'auto', height: 'auto', display: 'block' }}
-                  />
+                  compressedBitmap ? (
+                    <div className="preview-split">
+                      <div className="preview-split__panel">
+                        <span className="preview-split__label">Original</span>
+                        <canvas
+                          ref={canvasRef}
+                          className="sheet-canvas"
+                          title="Click to open in new tab"
+                          onClick={() => openBitmapInNewTab(sheetBitmap)}
+                        />
+                      </div>
+                      <div className="preview-split__panel">
+                        <span className="preview-split__label">Compressed</span>
+                        <canvas
+                          ref={canvasRefCompressed}
+                          className="sheet-canvas"
+                          title="Click to open in new tab"
+                          onClick={() => openBitmapInNewTab(compressedBitmap)}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <canvas
+                      ref={canvasRef}
+                      className="sheet-canvas"
+                      title="Click to open in new tab"
+                      onClick={() => openBitmapInNewTab(sheetBitmap)}
+                    />
+                  )
                 )}
               </div>
             </>

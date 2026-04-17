@@ -126,7 +126,8 @@
 
 .file-info__grid dd {
   margin: 0;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Albert Sans', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
   font-size: 10.5px;
   color: var(--fg-2);
   letter-spacing: 0.02em;
@@ -169,14 +170,16 @@
   color: var(--muted-2);
   width: 36px;
   flex-shrink: 0;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Albert Sans', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
 }
 
 .range-unit {
   font-size: 10px;
   color: var(--muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Albert Sans', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
   min-width: 30px;
   letter-spacing: 0.02em;
 }
@@ -212,7 +215,8 @@
   color: var(--fg);
   padding: 4px 8px;
   font-size: 11px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Albert Sans', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
   text-align: right;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -456,7 +460,8 @@ input[type="checkbox"]:focus {
 }
 
 .compress-size {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Albert Sans', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
   font-size: 10.5px;
   color: var(--accent);
   font-weight: 500;
@@ -464,9 +469,211 @@ input[type="checkbox"]:focus {
   flex-shrink: 0;
 }
 
+/* ── Narrow number input ──────────────────────────────────── */
+.num-input--sm {
+  width: 58px;
+}
+
+/* ── Dual range slider ────────────────────────────────────── */
+.dual-range {
+  position: relative;
+  flex: 1;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  margin: 2px 0 0;
+}
+
+.dual-range__track {
+  position: absolute;
+  left: 0; right: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--surface-3) 0%,
+    var(--surface-3) var(--lo),
+    var(--accent) var(--lo),
+    var(--accent) var(--hi),
+    var(--surface-3) var(--hi),
+    var(--surface-3) 100%
+  );
+  pointer-events: none;
+}
+
+.dual-range input[type="range"] {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: none;
+}
+
+.dual-range input[type="range"]::-webkit-slider-runnable-track {
+  background: transparent;
+  height: 4px;
+}
+
+.dual-range input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: all;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--fg);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  cursor: grab;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.dual-range input[type="range"]:hover::-webkit-slider-thumb {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(255,51,102,0.12);
+}
+
+.dual-range input[type="range"]:active::-webkit-slider-thumb {
+  cursor: grabbing;
+  border-color: var(--accent);
+}
+
+.dual-range input[type="range"]::-moz-range-track {
+  background: transparent;
+  height: 4px;
+}
+
+.dual-range input[type="range"]::-moz-range-thumb {
+  pointer-events: all;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--fg);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  cursor: grab;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+/* ── Timeline trimmer ─────────────────────────────────────── */
+.timeline {
+  position: relative;
+  height: 48px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface-2);
+  user-select: none;
+  touch-action: none;
+  border: 1px solid var(--border);
+}
+
+.timeline__strip {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  pointer-events: none;
+}
+
+.timeline__strip canvas {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.timeline__dim {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(247, 247, 245, 0.7);
+  backdrop-filter: saturate(0.4) blur(0.5px);
+  pointer-events: none;
+}
+
+.timeline__dim--left {
+  left: 0;
+  width: var(--lo);
+}
+
+.timeline__dim--right {
+  right: 0;
+  width: calc(100% - var(--hi));
+}
+
+.timeline__frame {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--lo);
+  right: calc(100% - var(--hi));
+  border-top: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  pointer-events: none;
+}
+
+.timeline__handle {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 12px;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: ew-resize;
+  pointer-events: all;
+  touch-action: none;
+  transition: background 0.15s;
+}
+
+.timeline__handle:hover,
+.timeline__handle:active {
+  background: var(--fg);
+}
+
+.timeline__handle--start {
+  left: 0;
+  border-radius: 6px 0 0 6px;
+}
+
+.timeline__handle--end {
+  right: 0;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ── Range time row ───────────────────────────────────────── */
+.range-time-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.range-sep {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 0 2px;
+}
+
+.range-frames {
+  font-family: 'Albert Sans', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--muted);
+  margin-left: auto;
+  letter-spacing: 0.02em;
+}
+
 /* ── Field value display ──────────────────────────────────── */
 .field-value {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Albert Sans', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
   font-size: 10.5px;
   color: var(--muted-2);
   min-width: 32px;
@@ -544,7 +751,8 @@ input[type="checkbox"]:focus {
 .sprite-player__counter {
   font-size: 10px;
   color: var(--muted-2);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Albert Sans', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   min-width: 130px;
   text-align: right;

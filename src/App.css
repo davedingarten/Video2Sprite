@@ -55,7 +55,7 @@
 
 .app-body {
   display: grid;
-  grid-template-columns: 316px 1fr;
+  grid-template-columns: 346px 1fr;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -104,7 +104,8 @@
 }
 
 .preview-info {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Albert Sans', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
   font-size: 10.5px;
   color: var(--muted-2);
   letter-spacing: 0.02em;
@@ -162,4 +163,51 @@
   font-size: 13px;
   font-weight: 400;
   letter-spacing: 0.01em;
+}
+
+/* ── Sheet canvas ───────────────────────────────────────────── */
+.sheet-canvas {
+  max-width: 100%;
+  max-height: calc(100vh - 140px);
+  width: auto;
+  height: auto;
+  display: block;
+  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  transition: box-shadow 0.15s;
+}
+
+.sheet-canvas:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+}
+
+/* ── Split comparison view ──────────────────────────────────── */
+.preview-split {
+  display: flex;
+  gap: 20px;
+  width: 100%;
+  align-items: flex-start;
+}
+
+.preview-split__panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.preview-split__label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted-2);
+}
+
+.preview-split .sheet-canvas {
+  max-height: calc(100vh - 180px);
 }
