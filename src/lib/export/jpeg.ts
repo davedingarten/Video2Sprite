@@ -9,6 +9,8 @@ export interface JpegOptions {
   // Lowest quality the bisection is allowed to try before giving up and
   // returning the smallest JPEG it could produce.
   minQuality?: number;
+  // Called each bisection iteration so the UI can show progress.
+  onProgress?: (iteration: number, total: number) => void;
 }
 
 export interface JpegResult {
@@ -52,10 +54,14 @@ export async function encodeJpeg(imageData: ImageData, options: JpegOptions): Pr
   let lo = minQ;
   let hi = maxQ;
   let best: { buf: ArrayBuffer; q: number } | null = null;
+  const totalIter = Math.ceil(Math.log2(hi - lo + 2));
+  let iter = 0;
 
   // Binary search: find the highest quality whose output fits under maxBytes.
   // Converges in log2(quality-range) encodes — ~7 for 0..100.
   while (lo <= hi) {
+    iter++;
+    options.onProgress?.(iter, totalIter);
     const mid = Math.floor((lo + hi) / 2);
     const buf = await mozEncode(imageData, mid);
     if (buf.byteLength <= options.maxBytes) {

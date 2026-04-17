@@ -47,7 +47,7 @@ export function GridControls({
       )}
 
       <div className="field-row">
-        <label>Padding px</label>
+        <label>Padding</label>
         <input
           type="number"
           min={0}
@@ -57,6 +57,7 @@ export function GridControls({
           onChange={(e) => onPaddingChange(Math.max(0, Number(e.target.value)))}
           className="num-input"
         />
+        <span className="range-unit">px</span>
       </div>
     </section>
   );
