@@ -18,105 +18,98 @@ Goal: app boots to an empty two-pane layout; folder structure and shared types i
 - [x] `App.tsx` renders empty left (controls) / right (preview) shell
 - [x] `npm run dev` boots without errors (`vite build` also passes)
 
-**Verify:** ✅ app loads, two-pane layout visible, no console errors. Build + dev both clean.
-
 ---
 
 ## Phase 2 — Video decode pipeline `[x]`
 
 Goal: given an MP4 file, start/end, and target fps, produce `VideoFrame`s at requested timestamps.
 
-- [x] `lib/video/demuxer.ts` — mp4box.js wrapper: track metadata + sample list, codec description extraction for AVC / HEVC / VP9 / AV1; fallback to `info.tracks` scan when mp4box drops a codec from `videoTracks` (e.g. ProRes)
-- [x] `lib/video/capability.ts` — `VideoDecoder.isConfigSupported()` probe; friendly error if unsupported
-- [x] `lib/video/decoder.ts` — `VideoDecoder` wrapper with backpressure (cap in-flight frames); caller owns `VideoFrame.close()`
-- [x] `lib/video/sampler.ts` — nearest-frame picker; widens decode window back to preceding keyframe for P/B-frame context
-- [x] `lib/video/extract.ts` — top-level orchestrator (demux → capability → plan → decode → emit kept frames)
-- [x] Temporary test button in `App.tsx`
-
-**Verified:** MP4/H.264 at 1080x1920, 20 frames @ 10fps emitted in 140ms, timestamps aligned to 100ms grid. ProRes MOV surfaces a specific error (no browser VideoDecoder supports ProRes; expected).
+- [x] `lib/video/demuxer.ts` — mp4box.js wrapper
+- [x] `lib/video/capability.ts` — `VideoDecoder.isConfigSupported()` probe
+- [x] `lib/video/decoder.ts` — backpressured `VideoDecoder` wrapper
+- [x] `lib/video/sampler.ts` — nearest-frame picker with keyframe widening
+- [x] `lib/video/extract.ts` — top-level orchestrator
 
 ---
 
 ## Phase 3 — Sprite sheet compositor `[x]`
 
-Goal: stream of `VideoFrame`s → single composed canvas.
-
-- [x] `lib/spritesheet/layout.ts` — manual grid (cols + padding → rows, sheet dims)
-- [x] `lib/spritesheet/auto-optimize.ts` — pick column count keeping sheet ≤ 4096×4096 with minimum empty tiles
-- [x] `lib/spritesheet/compositor.ts` — `OffscreenCanvas` when available, `HTMLCanvasElement` fallback; draw each frame into its tile with padding; close `VideoFrame` immediately after draw
-- [x] `hooks/useSpriteSheet.ts` — wires decoder stream → compositor, exposes progress
-
-**Verified:** sheet renders in preview pane, tiles align with grid overlay, repeated runs don't grow memory.
+- [x] `lib/spritesheet/layout.ts`
+- [x] `lib/spritesheet/auto-optimize.ts`
+- [x] `lib/spritesheet/compositor.ts`
+- [x] `hooks/useSpriteSheet.ts`
 
 ---
 
 ## Phase 4 — Export pipeline `[x]`
 
-Goal: produce downloadable blobs for all exports. Compression must match the CLI's quality (mozjpeg for JPEG, oxipng for PNG).
-
-- [x] `lib/export/jpeg.ts` — **mozjpeg via `@jsquash/jpeg`**; quality slider; binary-search max-size cap; canvas fallback
-- [x] `lib/export/png.ts` — **oxipng lossless** + **UPNG.js palette quantization** (2–256 colors, Floyd–Steinberg dither); oxipng post-pass on quantized output
-- [x] `lib/export/stills.ts` — first and last frames of the selected range at 2× tile size; same format/quality controls as sheet
-- [x] `lib/export/metadata.ts` — JSON: `{ sheet: {w,h}, tile: {w,h}, padding, columns, rows, fps, codec, container, frames: [{index, x, y, width, height, timestampMs}] }`
-- [x] `lib/export/snippet.ts` — CSS keyframes animation + tiny JS frame-stepper + demo HTML
-- [x] `hooks/useExport.ts` — `exportAll` (sheet + stills + snippet) and `exportMetadata` (JSON only); downloads via `URL.createObjectURL` + `<a download>`
-
-**Verified:** build clean, all modules type-check, JPEG/PNG compression visible in test harness.
+- [x] `lib/export/jpeg.ts` — mozjpeg via `@jsquash/jpeg` + max-size bisection + canvas fallback
+- [x] `lib/export/png.ts` — oxipng lossless + UPNG palette quantization
+- [x] `lib/export/webp.ts` — `@jsquash/webp` with quality/max-size bisection + lossless toggle
+- [x] `lib/export/stills.ts` — first/last frames at 2× tile size
+- [x] `lib/export/metadata.ts` — structured JSON
+- [x] `lib/export/snippet.ts` — CSS steps, vanilla JS, tiny JS, and GSAP drivers; selectable
+- [x] `hooks/useExport.ts` — single-click ZIP export
 
 ---
 
 ## Phase 5 — UI shell and controls `[x]`
 
-Goal: all controls visible, file info populates after upload. Can run in parallel with phases 2–4.
-
-- [x] `components/Uploader.tsx` — drag/drop + file picker
-- [x] `components/FileInfoPanel.tsx` — filename, size, container, codec, resolution, source fps, duration
-- [x] `components/RangeControls.tsx` — start/end time sliders with numeric input
-- [x] `components/SamplingControls.tsx` — target fps, scale mode (fit-width / fit-height / explicit w×h)
-- [x] `components/GridControls.tsx` — columns, padding, auto-optimize toggle
-- [x] `hooks/useVideoFile.ts` — upload → demuxer → metadata state
-- [x] Minimal clean styling (`components/components.css` with CSS variables)
-
-**Verified:** upload populates file info, all controls interactive, Generate preview runs and displays sheet.
+- [x] `components/Uploader.tsx`
+- [x] `components/FileInfoPanel.tsx`
+- [x] `components/TimelineEditor.tsx` — iOS-style trimmer with filmstrip + `<video>` scrubbing preview
+- [x] `components/SamplingControls.tsx` — fps + dimensions (width/height with AR lock)
+- [x] `components/GridControls.tsx` — layout mode (Auto / Columns / Rows) + padding
+- [x] `hooks/useVideoFile.ts`
+- [x] Styling (`components/components.css`, `App.css` — light theme, Albert Sans, DD Studio palette)
 
 ---
 
-## Phase 6 — Preview, progress, exports wired up `[ ]`
+## Phase 6 — Preview, progress, exports wired up `[x]`
 
-Goal: end-to-end flow from upload to downloads.
-
-- [ ] `components/PreviewStrip.tsx` — scrubbable thumbnail strip at output tile size; playback at chosen fps
-- [ ] "Generate preview" button — explicit trigger (not on every control change)
-- [ ] `components/ProgressPanel.tsx` — two-phase progress (decode / composite) with frame counts
-- [ ] Preview pane shows rendered sheet after generation with tile-grid overlay toggle
-- [ ] `components/ExportPanel.tsx` — "Export sprite sheet" (sheet + stills + CSS/JS) and "Export JSON" buttons trigger downloads
-- [ ] `components/ErrorBanner.tsx` — friendly inline messages for unsupported codec/container/browser
-
-**Verify:** full flow with an MP4/H.264 file end-to-end; preview plays; exports download; intentionally-bad codec shows friendly error.
+- [x] Explicit "Generate preview" trigger (not re-decoded on slider changes)
+- [x] Two-phase progress (counting → compositing) with frame counts
+- [x] Sprite player: play/pause/scrub; live "Animate" / "Sheet" view toggle
+- [x] Compression preview — encode the current sheet at the selected settings and show the result byte-size
+- [x] Side-by-side Original vs Compressed split view with a single shared scrubber
+- [x] Grid overlay toggle
+- [x] Settings lock: freezes controls after preview; explicit "Edit settings" to re-unlock and regenerate
+- [x] Export: sheet + first/last stills (2×) + metadata JSON + snippet files packaged as a ZIP
+- [x] Export JSON: separate button, metadata only
+- [x] Friendly inline error messaging for unsupported codec/container/browser
+- [x] Preview-pane warning bar when the sheet exceeds the 4096 GPU cap
 
 ---
 
-## Phase 7 — Polish, test, and README `[ ]`
+## Phase 7 — Polish, test, and README `[~]`
 
-Goal: ship-ready.
+- [x] Browser support gated implicitly via `VideoDecoder.isConfigSupported()` probe with friendly error
+- [x] Auto-grid keeps sheet ≤ 4096×4096 when possible; warns in preview when it can't
+- [x] JPEG max-size cap via binary search (7 encodes ≈ 0..100)
+- [x] WebP max-size cap — same bisection shape, respects lossless bypass
+- [x] Metadata JSON structurally correct
+- [x] Animation snippets animate correctly as standalone files
+- [x] `README.md` — user-facing docs
+- [ ] Manual test matrix across codecs/containers (MP4/H.264 ✓, MOV ✓, HEVC, AV1, corrupt file, 0-length range, very long videos)
 
-- [ ] Browser support gate at app boot (`'VideoDecoder' in window`)
-- [ ] Manual test matrix: MP4/H.264 ✓, MOV ✓, HEVC (if browser supports) ✓, AV1 (if browser supports) ✓, corrupt file, 0-length range, range beyond duration, very long videos
-- [ ] Auto-grid keeps sheet within 4096×4096 across range of inputs
-- [ ] JPEG max-size cap convergence verified
-- [ ] Metadata JSON is structurally correct and timestamps align with source
-- [ ] Animation snippet visibly animates in a standalone HTML file
-- [ ] `README.md` — usage, container/codec support matrix, browser support, `VideoFrame` lifecycle note, 4096 cap explanation, extension points (WebM/MKV demuxer, other containers)
+---
 
-**Verify:** README reads as complete documentation; all manual tests pass.
+## Post-MVP changes (2026-04)
+
+- Replaced dual-range slider with iOS-style `TimelineEditor`: filmstrip thumbnails via WebCodecs + `<video>` element for frame-precise scrubbing.
+- Light theme + Albert Sans typography; dropped Source Code Pro (0/8 ambiguity at small sizes).
+- Grid layout radio: Auto / Columns / Rows (Rows=1 → single-row filmstrip).
+- Export-format selector now includes WebP; JPEG + WebP share quality + max-KB controls.
+- Playback-snippet picker: CSS steps, Vanilla JS, Tiny JS, GSAP — emitted on demand.
+- Compression preview decoupled from full export — encode once, see file size and visual diff, then export.
 
 ---
 
 ## Notes / decisions log
 
-_Record non-obvious decisions and why, as they come up._
-
 - **Demuxer**: mp4box.js (ISO BMFF: MP4, MOV, M4V). WebM/MKV deferred — needs different demuxer.
 - **Codecs**: accept any codec `VideoDecoder.isConfigSupported()` says yes to. Probe per-file.
-- **4096×4096 sheet cap**: GPU texture upload limit on many devices. Auto-grid optimizes within this.
-- **Preview is not auto-regenerated** on control change — decoding is expensive. User clicks "Generate preview" explicitly.
+- **4096×4096 sheet cap**: GPU texture upload limit on many devices. Auto-grid optimizes within this; a warning bar surfaces in the preview pane when the layout overshoots.
+- **`<video>` vs WebCodecs for preview**: WebCodecs for extraction (frame-accurate); `<video>.currentTime` for the trimmer preview (also frame-precise for display, and the browser coalesces rapid seeks).
+- **Animated image export** (GIF / animated WebP): declined. See `feature.md`.
+- **Preview is not auto-regenerated** on control change — decoding is expensive. User clicks "Generate preview" explicitly; controls lock after generation until explicitly unlocked.

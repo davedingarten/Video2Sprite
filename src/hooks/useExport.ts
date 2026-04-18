@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import JSZip from 'jszip';
 import { encodeJpeg, encodeJpegCanvasFallback, type JpegOptions } from '../lib/export/jpeg';
 import { encodePng, encodePngCanvasFallback, type PngOptions } from '../lib/export/png';
+import { encodeWebp, encodeWebpCanvasFallback, type WebpOptions } from '../lib/export/webp';
 import { extractStills } from '../lib/export/stills';
 import { buildMetadata, metadataBlob } from '../lib/export/metadata';
 import { buildSnippet } from '../lib/export/snippet';
@@ -81,6 +82,17 @@ async function encodeImageData(
     } catch {
       return await encodeJpegCanvasFallback(imageDataToCanvas(imageData), options.jpegQuality);
     }
+  } else if (options.format === 'webp') {
+    const webpOpts: WebpOptions = {
+      quality: options.jpegQuality,
+      maxBytes: options.maxFileSizeBytes,
+      lossless: options.webpLossless,
+    };
+    try {
+      return await encodeWebp(imageData, webpOpts);
+    } catch {
+      return await encodeWebpCanvasFallback(imageDataToCanvas(imageData), options.jpegQuality);
+    }
   } else {
     const pngOpts: PngOptions = { level: 2, colors: pngColors };
     try {
@@ -97,7 +109,9 @@ export function useExport() {
 
   const exportAll = useCallback(async (input: ExportInput) => {
     setError(null);
-    const ext = input.options.format === 'jpeg' ? 'jpg' : 'png';
+    const ext = input.options.format === 'jpeg' ? 'jpg'
+      : input.options.format === 'webp' ? 'webp'
+      : 'png';
     const base = input.info.filename.replace(/\.[^.]+$/, '');
 
     try {
@@ -151,9 +165,12 @@ export function useExport() {
         fps: input.extract.targetFps,
         frameCount: input.frameTimestampsMs.length,
         sheetFilename: sheetName,
+        variants: input.options.snippetVariants,
       });
-      files.push({ name: 'anim.css', blob: new Blob([snippet.css], { type: 'text/css' }) });
-      files.push({ name: 'anim.js', blob: new Blob([snippet.js], { type: 'text/javascript' }) });
+      if (snippet.css) files.push({ name: 'anim.css', blob: new Blob([snippet.css], { type: 'text/css' }) });
+      if (snippet.js) files.push({ name: 'anim.js', blob: new Blob([snippet.js], { type: 'text/javascript' }) });
+      if (snippet.tinyJs) files.push({ name: 'anim-tiny.js', blob: new Blob([snippet.tinyJs], { type: 'text/javascript' }) });
+      if (snippet.gsapJs) files.push({ name: 'anim-gsap.js', blob: new Blob([snippet.gsapJs], { type: 'text/javascript' }) });
       files.push({ name: 'demo.html', blob: new Blob([snippet.html], { type: 'text/html' }) });
 
       setPhase('zipping');

@@ -45,24 +45,24 @@ export function SamplingControls({
         <input
           type="number" min={1} max={60} step={1} value={targetFps}
           onChange={(e) => onFpsChange(Math.max(1, Math.min(60, Number(e.target.value))))}
-          className="num-input"
+          className="num-input num-input--sm"
         />
       </div>
 
       <div className="field-row">
-        <label>W × H</label>
+        <label>Dimensions</label>
         <input
           type="number" min={1} max={4096} step={1} value={w}
           onChange={(e) => handleWidth(Number(e.target.value))}
           className="num-input num-input--sm"
         />
-        <span style={{ color: 'var(--muted)', fontSize: 11 }}>×</span>
+        <span className="range-unit">width</span>
         <input
           type="number" min={1} max={4096} step={1} value={h}
           onChange={(e) => handleHeight(Number(e.target.value))}
           className="num-input num-input--sm"
         />
-        <span className="range-unit">px</span>
+        <span className="range-unit">height</span>
       </div>
 
       <div className="field-row">

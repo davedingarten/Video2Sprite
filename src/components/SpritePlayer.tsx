@@ -6,17 +6,34 @@ interface Props {
   layout: GridLayout;
   fps: number;
   frameCount: number;
+  // Optional controlled mode — when provided, the component defers to these
+  // instead of managing internal state. Lets two players share a scrubber.
+  frame?: number;
+  playing?: boolean;
+  onFrameChange?: (frame: number) => void;
+  onPlayingChange?: (playing: boolean) => void;
+  hideControls?: boolean;
 }
 
-export function SpritePlayer({ bitmap, layout, fps, frameCount }: Props) {
+export function SpritePlayer({
+  bitmap, layout, fps, frameCount,
+  frame: controlledFrame,
+  playing: controlledPlaying,
+  onFrameChange,
+  onPlayingChange,
+  hideControls,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [playing, setPlaying] = useState(true);
-  const [frame, setFrame] = useState(0);
+  const isControlled = controlledFrame !== undefined && controlledPlaying !== undefined;
+  const [internalPlaying, setInternalPlaying] = useState(true);
+  const [internalFrame, setInternalFrame] = useState(0);
+  const playing = isControlled ? controlledPlaying! : internalPlaying;
+  const frame = isControlled ? controlledFrame! : internalFrame;
+
   const frameRef = useRef(0);
   const playingRef = useRef(true);
   const rafRef = useRef<number | null>(null);
   const lastTickRef = useRef<number>(0);
-  const loopStartRef = useRef<number>(0);
 
   const drawFrame = useCallback((f: number) => {
     const canvas = canvasRef.current;
@@ -37,36 +54,45 @@ export function SpritePlayer({ bitmap, layout, fps, frameCount }: Props) {
     );
   }, [bitmap, layout]);
 
-  // Animation loop
+  useEffect(() => { frameRef.current = frame; }, [frame]);
+  useEffect(() => { playingRef.current = playing; }, [playing]);
+
+  function setFrame(f: number) {
+    if (isControlled) {
+      onFrameChange?.(f);
+    } else {
+      setInternalFrame(f);
+    }
+  }
+  function setPlaying(p: boolean) {
+    if (isControlled) {
+      onPlayingChange?.(p);
+    } else {
+      setInternalPlaying(p);
+    }
+  }
+
+  // Animation loop. Only one of the paired players should run this when
+  // controlled externally — otherwise both would race. Convention: the
+  // first-mounted controlled player doesn't tick; tick is driven externally
+  // via controlledFrame changes. Internal (uncontrolled) mode ticks here.
   useEffect(() => {
+    if (isControlled) return;
     const interval = 1000 / Math.max(1, fps);
-    console.log(`[SpritePlayer] start — fps=${fps.toFixed(2)}, frames=${frameCount}, interval=${interval.toFixed(1)}ms`);
 
     function tick(ts: number) {
       if (!playingRef.current) return;
       if (lastTickRef.current === 0) {
-        // First tick: initialise clock without advancing
         lastTickRef.current = ts;
-        loopStartRef.current = ts;
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
       if (ts - lastTickRef.current >= interval) {
-        const prev = frameRef.current;
-        const next = (prev + 1) % frameCount;
-        // Log when loop completes
-        if (next === 0) {
-          const elapsed = ts - loopStartRef.current;
-          const expected = frameCount * interval;
-          console.log(`[SpritePlayer] loop done — elapsed=${elapsed.toFixed(0)}ms, expected=${expected.toFixed(0)}ms`);
-          loopStartRef.current = ts;
-        }
+        const next = (frameRef.current + 1) % frameCount;
         frameRef.current = next;
-        setFrame(next);
+        setInternalFrame(next);
         drawFrame(next);
-        // Accumulate against when the tick *should* have fired to prevent drift
         lastTickRef.current += interval;
-        // If we're more than one interval behind (tab was in background etc.), catch up
         if (ts - lastTickRef.current > interval) lastTickRef.current = ts;
       }
       rafRef.current = requestAnimationFrame(tick);
@@ -79,29 +105,28 @@ export function SpritePlayer({ bitmap, layout, fps, frameCount }: Props) {
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
-  }, [playing, fps, frameCount, drawFrame]);
+  }, [playing, fps, frameCount, drawFrame, isControlled]);
 
-  // Draw on frame change when scrubbing (not playing)
+  // Redraw whenever external frame changes (controlled mode).
   useEffect(() => {
-    if (!playing) drawFrame(frame);
-  }, [frame, playing, drawFrame]);
+    drawFrame(frame);
+  }, [frame, drawFrame]);
 
-  // Draw initial frame
   useEffect(() => {
     drawFrame(0);
-    setFrame(0);
-    frameRef.current = 0;
-  }, [bitmap, layout, drawFrame]);
+    if (!isControlled) {
+      setInternalFrame(0);
+      frameRef.current = 0;
+    }
+  }, [bitmap, layout, drawFrame, isControlled]);
 
   function togglePlay() {
-    const next = !playing;
-    playingRef.current = next;
+    setPlaying(!playing);
     lastTickRef.current = 0;
-    setPlaying(next);
   }
 
   function scrub(f: number) {
-    frameRef.current = f;
+    if (playing) setPlaying(false);
     setFrame(f);
   }
 
@@ -113,27 +138,67 @@ export function SpritePlayer({ bitmap, layout, fps, frameCount }: Props) {
         height={layout.tileHeight}
         className="sprite-player__canvas"
       />
-      <div className="sprite-player__controls">
-        <button className="sprite-player__playbtn" onClick={togglePlay} title={playing ? 'Pause' : 'Play'}>
-          {playing ? '⏸' : '▶'}
-        </button>
-        <input
-          type="range"
-          min={0}
-          max={frameCount - 1}
-          value={frame}
-          onChange={(e) => {
-            if (playing) { playingRef.current = false; setPlaying(false); }
-            scrub(Number(e.target.value));
-          }}
-          className="sprite-player__scrubber"
-        />
-        <span className="sprite-player__counter">
-          <span>{frame + 1}<span style={{ opacity: 0.45 }}>/{frameCount}</span></span>
-          <span style={{ opacity: 0.35, margin: '0 5px' }}>·</span>
-          <span>{(frame / fps).toFixed(2)}s<span style={{ opacity: 0.45 }}>/{((frameCount - 1) / fps).toFixed(2)}s</span></span>
-        </span>
-      </div>
+      {!hideControls && (
+        <div className="sprite-player__controls">
+          <button className="sprite-player__playbtn" onClick={togglePlay} title={playing ? 'Pause' : 'Play'}>
+            {playing ? '⏸' : '▶'}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={frameCount - 1}
+            value={frame}
+            onChange={(e) => scrub(Number(e.target.value))}
+            className="sprite-player__scrubber"
+          />
+          <span className="sprite-player__counter">
+            <span>{frame + 1}<span style={{ opacity: 0.45 }}>/{frameCount}</span></span>
+            <span style={{ opacity: 0.35, margin: '0 5px' }}>·</span>
+            <span>{(frame / fps).toFixed(2)}s<span style={{ opacity: 0.45 }}>/{((frameCount - 1) / fps).toFixed(2)}s</span></span>
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface SharedControlsProps {
+  frame: number;
+  playing: boolean;
+  fps: number;
+  frameCount: number;
+  onFrame: (f: number) => void;
+  onPlaying: (p: boolean) => void;
+}
+
+export function SpriteSharedControls({
+  frame, playing, fps, frameCount, onFrame, onPlaying,
+}: SharedControlsProps) {
+  return (
+    <div className="sprite-player__controls">
+      <button
+        className="sprite-player__playbtn"
+        onClick={() => onPlaying(!playing)}
+        title={playing ? 'Pause' : 'Play'}
+      >
+        {playing ? '⏸' : '▶'}
+      </button>
+      <input
+        type="range"
+        min={0}
+        max={frameCount - 1}
+        value={frame}
+        onChange={(e) => {
+          if (playing) onPlaying(false);
+          onFrame(Number(e.target.value));
+        }}
+        className="sprite-player__scrubber"
+      />
+      <span className="sprite-player__counter">
+        <span>{frame + 1}<span style={{ opacity: 0.45 }}>/{frameCount}</span></span>
+        <span style={{ opacity: 0.35, margin: '0 5px' }}>·</span>
+        <span>{(frame / fps).toFixed(2)}s<span style={{ opacity: 0.45 }}>/{((frameCount - 1) / fps).toFixed(2)}s</span></span>
+      </span>
     </div>
   );
 }

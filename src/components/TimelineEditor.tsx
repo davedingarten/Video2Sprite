@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as RPointerEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as RPointerEvent,
+} from 'react';
 import { extractThumbnails } from '../lib/video/thumbnails';
 
 interface Props {
@@ -10,32 +16,48 @@ interface Props {
   onChange: (startSec: number, endSec: number) => void;
 }
 
-const THUMB_COUNT = 15;
-const THUMB_W = 60;
-const THUMB_H = 40;
+const STRIP_COUNT = 15;
+const STRIP_W = 60;
+const STRIP_H = 40;
 
 function clamp(v: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
 }
 
-export function TimelineRangeControls({ file, duration, startSec, endSec, targetFps, onChange }: Props) {
+export function TimelineEditor({
+  file,
+  duration,
+  startSec,
+  endSec,
+  targetFps,
+  onChange,
+}: Props) {
   const step = duration > 60 ? 0.1 : 0.01;
   const frames = Math.max(0, Math.round((endSec - startSec) * targetFps));
 
   const trackRef = useRef<HTMLDivElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoURL, setVideoURL] = useState<string | null>(null);
   const [dragging, setDragging] = useState<'start' | 'end' | null>(null);
+  const [previewSec, setPreviewSec] = useState(startSec);
 
-  // Thumbnail extraction — re-run when file/duration changes.
+  // Object URL for the <video> preview source.
+  useEffect(() => {
+    const url = URL.createObjectURL(file);
+    setVideoURL(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  // Filmstrip thumbs via WebCodecs (small, ~15 bitmaps).
   useEffect(() => {
     const controller = new AbortController();
     let cancelled = false;
     let produced: ImageBitmap[] = [];
     const strip = stripRef.current;
-    if (!strip) return;
-    strip.innerHTML = '';
+    if (strip) strip.innerHTML = '';
 
-    extractThumbnails(file, duration, THUMB_COUNT, THUMB_W, THUMB_H, controller.signal)
+    extractThumbnails(file, duration, STRIP_COUNT, STRIP_W, STRIP_H, controller.signal)
       .then((bitmaps) => {
         if (cancelled || !stripRef.current) {
           for (const b of bitmaps) b.close();
@@ -46,22 +68,38 @@ export function TimelineRangeControls({ file, duration, startSec, endSec, target
         host.innerHTML = '';
         for (const b of bitmaps) {
           const c = document.createElement('canvas');
-          c.width = THUMB_W;
-          c.height = THUMB_H;
+          c.width = b.width;
+          c.height = b.height;
           const ctx = c.getContext('2d');
           if (ctx) ctx.drawImage(b, 0, 0);
           host.appendChild(c);
         }
       })
-      .catch(() => { /* non-fatal: leave strip empty */ });
+      .catch(() => { /* non-fatal: strip stays empty */ });
 
     return () => {
       cancelled = true;
       controller.abort();
       for (const b of produced) b.close();
-      produced = [];
     };
   }, [file, duration]);
+
+  // Seek the <video> on scrub changes. Browser coalesces rapid seeks — only the
+  // last currentTime actually decodes, which is exactly what we want.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !Number.isFinite(previewSec)) return;
+    if (v.readyState < 1) return;
+    if (Math.abs(v.currentTime - previewSec) > 0.005) {
+      v.currentTime = previewSec;
+    }
+  }, [previewSec]);
+
+  // Snap preview to startSec on external range changes when not actively dragging.
+  useEffect(() => {
+    if (dragging) return;
+    setPreviewSec(startSec);
+  }, [startSec, dragging]);
 
   function secondsFromClientX(clientX: number): number {
     const rect = trackRef.current?.getBoundingClientRect();
@@ -74,6 +112,7 @@ export function TimelineRangeControls({ file, duration, startSec, endSec, target
     return (e: RPointerEvent<HTMLDivElement>) => {
       (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
       setDragging(which);
+      setPreviewSec(which === 'start' ? startSec : endSec);
     };
   }
 
@@ -81,9 +120,13 @@ export function TimelineRangeControls({ file, duration, startSec, endSec, target
     if (!dragging) return;
     const s = secondsFromClientX(e.clientX);
     if (dragging === 'start') {
-      onChange(clamp(s, 0, endSec - step), endSec);
+      const clamped = clamp(s, 0, endSec - step);
+      onChange(clamped, endSec);
+      setPreviewSec(clamped);
     } else {
-      onChange(startSec, clamp(s, startSec + step, duration));
+      const clamped = clamp(s, startSec + step, duration);
+      onChange(startSec, clamped);
+      setPreviewSec(clamped);
     }
   }
 
@@ -104,20 +147,42 @@ export function TimelineRangeControls({ file, duration, startSec, endSec, target
   }
 
   return (
-    <section className="control-section">
-      <h3 className="control-section__title">Range</h3>
+    <div className="timeline-editor">
+      <h3 className="timeline-editor__title">Set range</h3>
+      <p className="timeline-editor__subtitle">
+        Drag the handles to pick the start and end of the clip.
+      </p>
+
+      <div className="timeline-editor__preview">
+        {videoURL && (
+          <video
+            ref={videoRef}
+            src={videoURL}
+            className="timeline-editor__video"
+            muted
+            playsInline
+            preload="auto"
+            onLoadedMetadata={() => {
+              if (videoRef.current) videoRef.current.currentTime = previewSec;
+            }}
+          />
+        )}
+        <div className="timeline-editor__time-badge">
+          {previewSec.toFixed(2)}s
+        </div>
+      </div>
 
       <div
         ref={trackRef}
-        className="timeline"
+        className="timeline-editor__track"
         style={{ '--lo': `${lo}%`, '--hi': `${hi}%` } as CSSProperties}
       >
-        <div ref={stripRef} className="timeline__strip" aria-hidden />
-        <div className="timeline__dim timeline__dim--left" />
-        <div className="timeline__dim timeline__dim--right" />
-        <div className="timeline__frame">
+        <div ref={stripRef} className="timeline-editor__strip" aria-hidden />
+        <div className="timeline-editor__dim timeline-editor__dim--left" />
+        <div className="timeline-editor__dim timeline-editor__dim--right" />
+        <div className="timeline-editor__frame">
           <div
-            className="timeline__handle timeline__handle--start"
+            className="timeline-editor__handle timeline-editor__handle--start"
             role="slider"
             aria-label="Start"
             aria-valuemin={0}
@@ -133,7 +198,7 @@ export function TimelineRangeControls({ file, duration, startSec, endSec, target
             </svg>
           </div>
           <div
-            className="timeline__handle timeline__handle--end"
+            className="timeline-editor__handle timeline-editor__handle--end"
             role="slider"
             aria-label="End"
             aria-valuemin={0}
@@ -151,7 +216,7 @@ export function TimelineRangeControls({ file, duration, startSec, endSec, target
         </div>
       </div>
 
-      <div className="range-time-row">
+      <div className="timeline-editor__inputs">
         <input
           type="number" min={0} max={endSec - step} step={step}
           value={startSec.toFixed(2)}
@@ -169,6 +234,6 @@ export function TimelineRangeControls({ file, duration, startSec, endSec, target
         <span className="range-unit">s</span>
         <span className="range-frames">{frames} frames</span>
       </div>
-    </section>
+    </div>
   );
 }

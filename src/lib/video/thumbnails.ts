@@ -1,7 +1,7 @@
 import { extractFrames } from './extract';
 
-// Extract ~count evenly-spaced thumbnails across the full file, resized to
-// (tileW × tileH). Bitmaps are GPU-backed — caller must close() them.
+// Extract ~count evenly-spaced filmstrip thumbnails across the full file,
+// each sized (tileW × tileH). Bitmaps are GPU-backed — caller MUST close().
 export async function extractThumbnails(
   file: File,
   durationSec: number,

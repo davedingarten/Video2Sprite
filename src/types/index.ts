@@ -54,10 +54,14 @@ export interface SpriteSheetMeta {
   frames: FramePlacement[];
 }
 
-export type ExportFormat = 'png' | 'jpeg';
+export type ExportFormat = 'png' | 'jpeg' | 'webp';
+
+export type SnippetVariant = 'steps-css' | 'vanilla-js' | 'tiny-js' | 'gsap';
 
 export interface ExportOptions {
   format: ExportFormat;
   jpegQuality: number;
   maxFileSizeBytes?: number;
+  webpLossless?: boolean;
+  snippetVariants?: SnippetVariant[];
 }

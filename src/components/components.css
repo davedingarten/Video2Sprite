@@ -447,6 +447,97 @@ input[type="checkbox"]:focus {
   box-shadow: 0 0 0 3px rgba(255, 51, 102, 0.12);
 }
 
+/* ── Radio group ──────────────────────────────────────────── */
+.radio-group {
+  display: flex;
+  gap: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 3px;
+  flex: 1;
+}
+
+.radio-group__item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted-2);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  line-height: 1;
+  min-width: 0;
+}
+
+.radio-group__item input[type="radio"] {
+  display: none;
+}
+
+.radio-group__item:has(input:checked) {
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+
+.radio-group__item:not(:has(input:checked)):hover {
+  color: var(--fg-2);
+}
+
+/* ── Snippet variants picker ──────────────────────────────── */
+.snippet-variants {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.snippet-variants__title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted-2);
+  margin-bottom: 8px;
+}
+
+.snippet-variants__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--fg-2);
+  padding: 3px 0;
+  cursor: pointer;
+}
+
+/* ── Preview warning bar ──────────────────────────────────── */
+.preview-warning-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--error-dim);
+  border: 1px solid rgba(255, 51, 102, 0.2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  font-size: 11.5px;
+  color: var(--error);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.preview-warning-bar__icon {
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 /* ── Compress preview row ─────────────────────────────────── */
 .compress-row {
   display: flex;
@@ -559,10 +650,76 @@ input[type="checkbox"]:focus {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-/* ── Timeline trimmer ─────────────────────────────────────── */
-.timeline {
+/* ── Timeline editor (preview + trimmer) ──────────────────── */
+.timeline-editor {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  width: 100%;
+  min-height: 0;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.timeline-editor__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--fg);
+  letter-spacing: -0.01em;
+}
+
+.timeline-editor__subtitle {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--muted-2);
+  letter-spacing: 0.01em;
+}
+
+.timeline-editor__preview {
   position: relative;
-  height: 48px;
+  width: 100%;
+  flex: 0 1 auto;
+  max-height: 48vh;
+  min-height: 0;
+  align-self: center;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.timeline-editor__video {
+  display: block;
+  max-width: 100%;
+  max-height: 48vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.timeline-editor__time-badge {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  padding: 3px 8px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 100px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.timeline-editor__track {
+  position: relative;
+  height: 64px;
   border-radius: 8px;
   overflow: hidden;
   background: var(--surface-2);
@@ -571,14 +728,14 @@ input[type="checkbox"]:focus {
   border: 1px solid var(--border);
 }
 
-.timeline__strip {
+.timeline-editor__strip {
   position: absolute;
   inset: 0;
   display: flex;
   pointer-events: none;
 }
 
-.timeline__strip canvas {
+.timeline-editor__strip canvas {
   flex: 1;
   min-width: 0;
   height: 100%;
@@ -586,26 +743,19 @@ input[type="checkbox"]:focus {
   object-fit: cover;
 }
 
-.timeline__dim {
+.timeline-editor__dim {
   position: absolute;
   top: 0;
   bottom: 0;
-  background: rgba(247, 247, 245, 0.7);
-  backdrop-filter: saturate(0.4) blur(0.5px);
+  background: rgba(247, 247, 245, 0.72);
+  backdrop-filter: saturate(0.3) blur(0.5px);
   pointer-events: none;
 }
 
-.timeline__dim--left {
-  left: 0;
-  width: var(--lo);
-}
+.timeline-editor__dim--left { left: 0; width: var(--lo); }
+.timeline-editor__dim--right { right: 0; width: calc(100% - var(--hi)); }
 
-.timeline__dim--right {
-  right: 0;
-  width: calc(100% - var(--hi));
-}
-
-.timeline__frame {
+.timeline-editor__frame {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -616,11 +766,11 @@ input[type="checkbox"]:focus {
   pointer-events: none;
 }
 
-.timeline__handle {
+.timeline-editor__handle {
   position: absolute;
   top: -2px;
   bottom: -2px;
-  width: 12px;
+  width: 14px;
   background: var(--accent);
   display: flex;
   align-items: center;
@@ -632,19 +782,25 @@ input[type="checkbox"]:focus {
   transition: background 0.15s;
 }
 
-.timeline__handle:hover,
-.timeline__handle:active {
+.timeline-editor__handle:hover,
+.timeline-editor__handle:active {
   background: var(--fg);
 }
 
-.timeline__handle--start {
+.timeline-editor__handle--start {
   left: 0;
   border-radius: 6px 0 0 6px;
 }
 
-.timeline__handle--end {
+.timeline-editor__handle--end {
   right: 0;
   border-radius: 0 6px 6px 0;
+}
+
+.timeline-editor__inputs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* ── Range time row ───────────────────────────────────────── */

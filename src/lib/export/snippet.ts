@@ -1,24 +1,30 @@
-import type { GridLayout } from '../../types';
+import type { GridLayout, SnippetVariant } from '../../types';
 
 export interface SnippetInput {
   layout: GridLayout;
   fps: number;
   frameCount: number;
   sheetFilename: string;
-  className?: string; // defaults to "sprite-anim"
+  className?: string;
   loop?: boolean;
+  // Which playback drivers to emit. Defaults to ['steps-css', 'vanilla-js'].
+  variants?: SnippetVariant[];
 }
 
 export interface SnippetFiles {
-  css: string;
-  js: string;
-  html: string; // demo page referencing both
+  // Only the files that were selected get populated. `demo.html` adapts to
+  // whichever driver is present (first available in priority: vanilla-js,
+  // tiny-js, gsap, steps-css).
+  css?: string;
+  js?: string;       // vanilla-js driver (full-featured)
+  tinyJs?: string;   // minimal loop-forever driver
+  gsapJs?: string;   // GSAP-driven snippet (requires gsap at runtime)
+  html: string;
+  variants: SnippetVariant[];
 }
 
-// Two playback strategies shipped together so the consumer can pick:
-// 1. Pure-CSS steps() keyframes — runs without JS, decodes fast, but can't
-//    pause / scrub / change fps at runtime.
-// 2. JS frame-stepper — uses requestAnimationFrame, offers play/pause/seek.
+const DEFAULT_VARIANTS: SnippetVariant[] = ['steps-css', 'vanilla-js'];
+
 export function buildSnippet(input: SnippetInput): SnippetFiles {
   const { layout, fps, frameCount } = input;
   const cls = input.className ?? 'sprite-anim';
@@ -26,35 +32,50 @@ export function buildSnippet(input: SnippetInput): SnippetFiles {
   const durationSec = frameCount / fps;
   const stepX = layout.tileWidth + layout.padding;
   const stepY = layout.tileHeight + layout.padding;
+  const variants = input.variants && input.variants.length > 0 ? input.variants : DEFAULT_VARIANTS;
 
-  const css = buildCss({
-    cls,
-    sheet: input.sheetFilename,
-    tileW: layout.tileWidth,
-    tileH: layout.tileHeight,
-    columns: layout.columns,
-    stepX,
-    stepY,
-    durationSec,
-    frameCount,
-    padding: layout.padding,
-    loop,
-  });
+  const css = variants.includes('steps-css')
+    ? buildCss({
+        cls,
+        sheet: input.sheetFilename,
+        tileW: layout.tileWidth,
+        tileH: layout.tileHeight,
+        columns: layout.columns,
+        stepX,
+        stepY,
+        durationSec,
+        frameCount,
+        padding: layout.padding,
+        loop,
+      })
+    : buildBaseCss({ cls, sheet: input.sheetFilename, tileW: layout.tileWidth, tileH: layout.tileHeight });
 
-  const js = buildJs({
-    cls,
-    fps,
-    frameCount,
-    columns: layout.columns,
-    stepX,
-    stepY,
-    padding: layout.padding,
-    loop,
-  });
+  const js = variants.includes('vanilla-js')
+    ? buildJs({ cls, fps, frameCount, columns: layout.columns, stepX, stepY, padding: layout.padding, loop })
+    : undefined;
 
-  const html = buildHtml(cls);
+  const tinyJs = variants.includes('tiny-js')
+    ? buildTinyJs({ cls, fps, frameCount, columns: layout.columns, stepX, stepY, padding: layout.padding })
+    : undefined;
 
-  return { css, js, html };
+  const gsapJs = variants.includes('gsap')
+    ? buildGsapJs({ cls, fps, frameCount, columns: layout.columns, stepX, stepY, padding: layout.padding })
+    : undefined;
+
+  const html = buildHtml(cls, variants);
+
+  return { css, js, tinyJs, gsapJs, html, variants };
+}
+
+// Minimal CSS (no keyframes) for snippets that set background-position from JS.
+function buildBaseCss(o: { cls: string; sheet: string; tileW: number; tileH: number }): string {
+  return `.${o.cls} {
+  width: ${o.tileW}px;
+  height: ${o.tileH}px;
+  background-image: url("${o.sheet}");
+  background-repeat: no-repeat;
+}
+`;
 }
 
 function buildCss(o: {
@@ -73,8 +94,6 @@ function buildCss(o: {
   const rows = Math.ceil(o.frameCount / o.columns);
   const iter = o.loop ? 'infinite' : '1';
 
-  // Build keyframe stops at every frame so rows advance correctly.
-  // Each step sets background-position to (-col*stepX, -row*stepY).
   const keyframeEntries: string[] = [];
   for (let i = 0; i < o.frameCount; i++) {
     const col = i % o.columns;
@@ -84,7 +103,6 @@ function buildCss(o: {
     const pct = ((i / o.frameCount) * 100).toFixed(4);
     keyframeEntries.push(`  ${pct}% { background-position: ${x}px ${y}px; }`);
   }
-  // final stop so the last frame holds until wrap
   const lastCol = (o.frameCount - 1) % o.columns;
   const lastRow = Math.floor((o.frameCount - 1) / o.columns);
   const lastX = -(o.padding + lastCol * o.stepX);
@@ -173,7 +191,107 @@ function buildJs(o: {
 `;
 }
 
-function buildHtml(cls: string): string {
+// Ultra-light driver: loop forever, no controls. ~10 lines.
+function buildTinyJs(o: {
+  cls: string;
+  fps: number;
+  frameCount: number;
+  columns: number;
+  stepX: number;
+  stepY: number;
+  padding: number;
+}): string {
+  return `// Tiny sprite driver — loops forever, no API.
+(function () {
+  var el = document.querySelector('.${o.cls}');
+  if (!el) return;
+  var f = 0, N = ${o.frameCount}, C = ${o.columns};
+  var SX = ${o.stepX}, SY = ${o.stepY}, P = ${o.padding};
+  setInterval(function () {
+    var c = f % C, r = (f / C) | 0;
+    el.style.backgroundPosition = -(P + c * SX) + 'px ' + -(P + r * SY) + 'px';
+    f = (f + 1) % N;
+  }, ${Math.round(1000 / o.fps)});
+})();
+`;
+}
+
+// GSAP driver — tween is returned so consumers can plug it into ScrollTrigger.
+function buildGsapJs(o: {
+  cls: string;
+  fps: number;
+  frameCount: number;
+  columns: number;
+  stepX: number;
+  stepY: number;
+  padding: number;
+}): string {
+  return `// GSAP sprite driver — requires gsap at runtime.
+// Returns a scrub-able, pause-able tween keyed to the element.
+// Usage:  var tween = window.spriteAnim(document.querySelector('.${o.cls}'));
+(function () {
+  var FPS = ${o.fps};
+  var FRAME_COUNT = ${o.frameCount};
+  var COLS = ${o.columns};
+  var STEP_X = ${o.stepX};
+  var STEP_Y = ${o.stepY};
+  var PAD = ${o.padding};
+
+  window.spriteAnim = function (el) {
+    return gsap.to({ f: 0 }, {
+      f: FRAME_COUNT - 1,
+      duration: FRAME_COUNT / FPS,
+      ease: "steps(" + (FRAME_COUNT - 1) + ")",
+      repeat: -1,
+      onUpdate: function () {
+        var i = Math.round(this.targets()[0].f);
+        var col = i % COLS, row = (i / COLS) | 0;
+        el.style.backgroundPosition = -(PAD + col * STEP_X) + "px " + -(PAD + row * STEP_Y) + "px";
+      }
+    });
+  };
+})();
+`;
+}
+
+function buildHtml(cls: string, variants: SnippetVariant[]): string {
+  // Pick the richest interactive driver available for the demo page.
+  const hasVanilla = variants.includes('vanilla-js');
+  const hasTiny = variants.includes('tiny-js');
+  const hasGsap = variants.includes('gsap');
+
+  const scripts: string[] = [];
+  if (hasVanilla) scripts.push('<script src="anim.js"></script>');
+  if (hasTiny) scripts.push('<script src="anim-tiny.js"></script>');
+  if (hasGsap) {
+    scripts.push('<script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>');
+    scripts.push('<script src="anim-gsap.js"></script>');
+  }
+
+  let init = '';
+  if (hasVanilla) {
+    init = `
+    var ctrl = window.SpriteAnim(document.getElementById('anim'));
+    document.getElementById('play').onclick = ctrl.play;
+    document.getElementById('pause').onclick = ctrl.pause;`;
+  } else if (hasGsap) {
+    init = `
+    var tween = window.spriteAnim(document.getElementById('anim'));
+    document.getElementById('play').onclick = function () { tween.play(); };
+    document.getElementById('pause').onclick = function () { tween.pause(); };`;
+  }
+
+  const controls = (hasVanilla || hasGsap)
+    ? `  <div>
+    <button id="play">Play</button>
+    <button id="pause">Pause</button>
+  </div>`
+    : '';
+  const initScript = init
+    ? `  <script>${init}
+  </script>`
+    : '';
+
   return `<!doctype html>
 <html>
 <head>
@@ -183,16 +301,9 @@ function buildHtml(cls: string): string {
 </head>
 <body>
   <div class="${cls}" id="anim"></div>
-  <div>
-    <button id="play">Play</button>
-    <button id="pause">Pause</button>
-  </div>
-  <script src="anim.js"></script>
-  <script>
-    var ctrl = window.SpriteAnim(document.getElementById('anim'));
-    document.getElementById('play').onclick = ctrl.play;
-    document.getElementById('pause').onclick = ctrl.pause;
-  </script>
+${controls}
+  ${scripts.join('\n  ')}
+${initScript}
 </body>
 </html>
 `;

@@ -3,17 +3,18 @@ import { useVideoFile } from './hooks/useVideoFile';
 import { useExport } from './hooks/useExport';
 import { Uploader } from './components/Uploader';
 import { FileInfoPanel } from './components/FileInfoPanel';
-import { TimelineRangeControls } from './components/TimelineRangeControls';
+import { TimelineEditor } from './components/TimelineEditor';
 import { SamplingControls } from './components/SamplingControls';
-import { GridControls } from './components/GridControls';
-import { SpritePlayer } from './components/SpritePlayer';
+import { GridControls, type LayoutMode } from './components/GridControls';
+import { SpritePlayer, SpriteSharedControls } from './components/SpritePlayer';
 import { extractFrames } from './lib/video/extract';
 import { autoOptimize } from './lib/spritesheet/auto-optimize';
 import { computeLayout } from './lib/spritesheet/layout';
 import { canvasToImageData, createCompositor } from './lib/spritesheet/compositor';
 import { encodeJpeg } from './lib/export/jpeg';
 import { encodePng } from './lib/export/png';
-import type { GridLayout, ScaleMode } from './types';
+import { encodeWebp } from './lib/export/webp';
+import type { GridLayout, ScaleMode, SnippetVariant } from './types';
 import './App.css';
 import './components/components.css';
 
@@ -59,9 +60,10 @@ export default function App() {
   const [endSec, setEndSec] = useState(0);
   const [targetFps, setTargetFps] = useState(10);
   const [scaleMode, setScaleMode] = useState<ScaleMode>({ kind: 'fit-width', width: 320 });
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>('auto');
   const [columns, setColumns] = useState(6);
+  const [rows, setRows] = useState(1);
   const [padding, setPadding] = useState(0);
-  const [autoOptimizeGrid, setAutoOptimizeGrid] = useState(true);
 
   // Sheet state
   const [sheetBitmap, setSheetBitmap] = useState<ImageBitmap | null>(null);
@@ -86,12 +88,22 @@ export default function App() {
   const [compressedBytes, setCompressedBytes] = useState<number | null>(null);
   const [compressProgress, setCompressProgress] = useState<{ i: number; n: number } | null>(null);
 
+  // Shared playback state for split-view (original vs compressed).
+  const [sharedFrame, setSharedFrame] = useState(0);
+  const [sharedPlaying, setSharedPlaying] = useState(true);
+
   // Export controls
-  const [exportFormat, setExportFormat] = useState<'jpeg' | 'png'>('jpeg');
+  const [exportFormat, setExportFormat] = useState<'jpeg' | 'png' | 'webp'>('jpeg');
   const [jpegQuality, setJpegQuality] = useState(85);
   const [jpegMaxKB, setJpegMaxKB] = useState<number | ''>('');
   const [pngColors, setPngColors] = useState(0);
+  const [webpLossless, setWebpLossless] = useState(false);
+  const [snippetVariants, setSnippetVariants] = useState<SnippetVariant[]>(['steps-css', 'vanilla-js']);
   const { exportAll, phase: exportPhase, error: exportError } = useExport();
+
+  function toggleSnippetVariant(v: SnippetVariant) {
+    setSnippetVariants(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
+  }
 
   // When a new file loads, reset range to full duration.
   useEffect(() => {
@@ -105,7 +117,30 @@ export default function App() {
   useEffect(() => {
     setCompressedBitmap(prev => { prev?.close(); return null; });
     setCompressedBytes(null);
-  }, [exportFormat, jpegQuality, jpegMaxKB, pngColors]);
+  }, [exportFormat, jpegQuality, jpegMaxKB, pngColors, webpLossless]);
+
+  // Drive playback for split-view shared scrubber. Only runs when both
+  // originals + compressed are showing (otherwise each SpritePlayer self-ticks).
+  useEffect(() => {
+    if (!sheetBitmap || !compressedBitmap || !sharedPlaying || showSheet) return;
+    const fc = timestampsRef.current.length || (sheetInfo?.cols ?? 1) * (sheetInfo?.rows ?? 1);
+    const dur = endSec - startSec;
+    const fps = fc > 1 && dur > 0 ? fc / dur : targetFps;
+    const interval = 1000 / Math.max(1, fps);
+    let raf = 0;
+    let last = 0;
+    const tick = (ts: number) => {
+      if (!last) { last = ts; raf = requestAnimationFrame(tick); return; }
+      if (ts - last >= interval) {
+        setSharedFrame(f => (f + 1) % fc);
+        last += interval;
+        if (ts - last > interval) last = ts;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [sheetBitmap, compressedBitmap, sharedPlaying, showSheet, endSec, startSec, targetFps, sheetInfo]);
 
   function clearCompressed() {
     setCompressedBitmap(prev => { prev?.close(); return null; });
@@ -152,9 +187,12 @@ export default function App() {
       });
       if (frameCount === 0) throw new Error('No frames in the selected range.');
 
-      const layout = autoOptimizeGrid
+      const resolvedColumns = layoutMode === 'rows'
+        ? Math.max(1, Math.ceil(frameCount / Math.max(1, rows)))
+        : columns;
+      const layout = layoutMode === 'auto'
         ? autoOptimize({ frameCount, tileWidth, tileHeight, padding }).layout
-        : computeLayout({ columns, frameCount, tileWidth, tileHeight, padding });
+        : computeLayout({ columns: resolvedColumns, frameCount, tileWidth, tileHeight, padding });
 
       if (layout.sheetWidth > 4096 || layout.sheetHeight > 4096) {
         setGenError(
@@ -208,6 +246,15 @@ export default function App() {
         const result = await encodeJpeg(sheetImageDataRef.current, {
           quality: jpegQuality,
           maxBytes: jpegMaxKB ? Number(jpegMaxKB) * 1000 : undefined,
+          onProgress: (i, n) => setCompressProgress({ i, n }),
+        });
+        blob = result.blob;
+        bytes = result.bytes;
+      } else if (exportFormat === 'webp') {
+        const result = await encodeWebp(sheetImageDataRef.current, {
+          quality: jpegQuality,
+          maxBytes: jpegMaxKB ? Number(jpegMaxKB) * 1000 : undefined,
+          lossless: webpLossless,
           onProgress: (i, n) => setCompressProgress({ i, n }),
         });
         blob = result.blob;
@@ -299,14 +346,6 @@ export default function App() {
               )}
 
               <div className={settingsLocked ? 'settings-locked' : ''}>
-                <TimelineRangeControls
-                  file={file!}
-                  duration={info.durationSec}
-                  startSec={startSec}
-                  endSec={endSec}
-                  targetFps={targetFps}
-                  onChange={(s, e) => { setStartSec(s); setEndSec(e); }}
-                />
                 <SamplingControls
                   targetFps={targetFps}
                   scaleMode={scaleMode}
@@ -316,12 +355,14 @@ export default function App() {
                   onScaleModeChange={setScaleMode}
                 />
                 <GridControls
+                  layoutMode={layoutMode}
                   columns={columns}
+                  rows={rows}
                   padding={padding}
-                  autoOptimize={autoOptimizeGrid}
+                  onLayoutModeChange={setLayoutMode}
                   onColumnsChange={setColumns}
+                  onRowsChange={setRows}
                   onPaddingChange={setPadding}
-                  onAutoOptimizeChange={setAutoOptimizeGrid}
                 />
               </div>
 
@@ -348,12 +389,54 @@ export default function App() {
                       <select
                         className="select"
                         value={exportFormat}
-                        onChange={(e) => setExportFormat(e.target.value as 'jpeg' | 'png')}
+                        onChange={(e) => setExportFormat(e.target.value as 'jpeg' | 'png' | 'webp')}
                       >
                         <option value="jpeg">JPEG (mozjpeg)</option>
+                        <option value="webp">WebP</option>
                         <option value="png">PNG (oxipng)</option>
                       </select>
                     </div>
+
+                    {exportFormat === 'webp' && (
+                      <>
+                        {!webpLossless && (
+                          <>
+                            <div className="field-row">
+                              <label>Quality</label>
+                              <input
+                                type="range" min={10} max={100} value={jpegQuality}
+                                onChange={(e) => setJpegQuality(Number(e.target.value))}
+                                className="slider"
+                              />
+                              <input
+                                type="number" min={10} max={100} step={1} value={jpegQuality}
+                                onChange={(e) => setJpegQuality(Math.max(10, Math.min(100, Number(e.target.value))))}
+                                className="num-input num-input--sm"
+                              />
+                            </div>
+                            <div className="field-row">
+                              <label>Max KB</label>
+                              <input
+                                type="number" min={1} placeholder="none" value={jpegMaxKB}
+                                onChange={(e) => {
+                                  if (e.target.value === '') { setJpegMaxKB(''); return; }
+                                  setJpegMaxKB(Math.max(1, Number(e.target.value)));
+                                }}
+                                className="num-input num-input--sm"
+                              />
+                            </div>
+                          </>
+                        )}
+                        <div className="field-row">
+                          <label>Lossless</label>
+                          <input
+                            type="checkbox"
+                            checked={webpLossless}
+                            onChange={(e) => setWebpLossless(e.target.checked)}
+                          />
+                        </div>
+                      </>
+                    )}
 
                     {exportFormat === 'jpeg' && (
                       <>
@@ -364,7 +447,11 @@ export default function App() {
                             onChange={(e) => setJpegQuality(Number(e.target.value))}
                             className="slider"
                           />
-                          <span className="field-value">{jpegQuality}</span>
+                          <input
+                            type="number" min={10} max={100} step={1} value={jpegQuality}
+                            onChange={(e) => setJpegQuality(Math.max(10, Math.min(100, Number(e.target.value))))}
+                            className="num-input num-input--sm"
+                          />
                         </div>
                         <div className="field-row">
                           <label>Max KB</label>
@@ -404,12 +491,28 @@ export default function App() {
                             : 'Compressing…'
                           : 'Preview compression'}
                       </button>
-                      {compressedBytes !== null && (
-                        <span className="compress-size">{formatBytes(compressedBytes)}</span>
-                      )}
                     </div>
 
                     {exportError && <div className="error-banner" style={{ marginTop: 8 }}>{exportError}</div>}
+
+                    <div className="snippet-variants">
+                      <div className="snippet-variants__title">Playback snippets</div>
+                      {([
+                        { id: 'steps-css', label: 'CSS steps()' },
+                        { id: 'vanilla-js', label: 'Vanilla JS' },
+                        { id: 'tiny-js', label: 'Tiny JS (loop only)' },
+                        { id: 'gsap', label: 'GSAP' },
+                      ] as const).map(({ id, label }) => (
+                        <label key={id} className="snippet-variants__item">
+                          <input
+                            type="checkbox"
+                            checked={snippetVariants.includes(id)}
+                            onChange={() => toggleSnippetVariant(id)}
+                          />
+                          <span>{label}</span>
+                        </label>
+                      ))}
+                    </div>
 
                     <div style={{ marginTop: 8 }}>
                       <button
@@ -428,6 +531,8 @@ export default function App() {
                               format: exportFormat,
                               jpegQuality,
                               maxFileSizeBytes: jpegMaxKB ? Number(jpegMaxKB) * 1000 : undefined,
+                              webpLossless: exportFormat === 'webp' ? webpLossless : undefined,
+                              snippetVariants,
                             },
                             pngColors: exportFormat === 'png' ? pngColors : undefined,
                           });
@@ -452,6 +557,12 @@ export default function App() {
         <section className="preview-pane" aria-label="Preview">
           {sheetBitmap && sheetInfo && layoutRef.current ? (
             <>
+              {(sheetInfo.w > 4096 || sheetInfo.h > 4096) && (
+                <div className="preview-warning-bar" role="status">
+                  <span className="preview-warning-bar__icon" aria-hidden>⚠</span>
+                  Sheet is {sheetInfo.w}×{sheetInfo.h} — exceeds the 4096 GPU cap. Reduce fps, range, or tile size.
+                </div>
+              )}
               <div className="preview-toolbar">
                 <span className="preview-info">
                   {sheetInfo.w}×{sheetInfo.h}
@@ -486,21 +597,50 @@ export default function App() {
                   const fc = timestampsRef.current.length;
                   const dur = endSec - startSec;
                   const actualFps = fc > 1 && dur > 0 ? fc / dur : targetFps;
+                  const totalFrames = fc || sheetInfo.cols * sheetInfo.rows;
                   const playerProps = {
                     layout: layoutRef.current!,
                     fps: actualFps,
-                    frameCount: fc || sheetInfo.cols * sheetInfo.rows,
+                    frameCount: totalFrames,
                   };
                   return compressedBitmap ? (
-                    <div className="preview-split">
-                      <div className="preview-split__panel">
-                        <span className="preview-split__label">Original</span>
-                        <SpritePlayer bitmap={sheetBitmap} {...playerProps} />
+                    <div className="preview-player-stack">
+                      <div className="preview-split">
+                        <div className="preview-split__panel">
+                          <span className="preview-split__label">Original</span>
+                          <SpritePlayer
+                            bitmap={sheetBitmap}
+                            {...playerProps}
+                            frame={sharedFrame}
+                            playing={sharedPlaying}
+                            onFrameChange={setSharedFrame}
+                            onPlayingChange={setSharedPlaying}
+                            hideControls
+                          />
+                        </div>
+                        <div className="preview-split__panel">
+                          <span className="preview-split__label">
+                            Compressed{compressedBytes !== null ? ` (${formatBytes(compressedBytes)})` : ''}
+                          </span>
+                          <SpritePlayer
+                            bitmap={compressedBitmap}
+                            {...playerProps}
+                            frame={sharedFrame}
+                            playing={sharedPlaying}
+                            onFrameChange={setSharedFrame}
+                            onPlayingChange={setSharedPlaying}
+                            hideControls
+                          />
+                        </div>
                       </div>
-                      <div className="preview-split__panel">
-                        <span className="preview-split__label">Compressed</span>
-                        <SpritePlayer bitmap={compressedBitmap} {...playerProps} />
-                      </div>
+                      <SpriteSharedControls
+                        frame={sharedFrame}
+                        playing={sharedPlaying}
+                        fps={actualFps}
+                        frameCount={totalFrames}
+                        onFrame={setSharedFrame}
+                        onPlaying={setSharedPlaying}
+                      />
                     </div>
                   ) : (
                     <SpritePlayer bitmap={sheetBitmap} {...playerProps} />
@@ -538,11 +678,20 @@ export default function App() {
                 )}
               </div>
             </>
+          ) : isReady && info && file ? (
+            <div className="preview-frame">
+              <TimelineEditor
+                file={file}
+                duration={info.durationSec}
+                startSec={startSec}
+                endSec={endSec}
+                targetFps={targetFps}
+                onChange={(s, e) => { setStartSec(s); setEndSec(e); }}
+              />
+            </div>
           ) : (
             <div className="preview-empty">
-              <p className="placeholder">
-                {isReady ? 'Configure controls and click Generate preview.' : 'Upload a video to get started.'}
-              </p>
+              <p className="placeholder">Upload a video to get started.</p>
             </div>
           )}
         </section>
