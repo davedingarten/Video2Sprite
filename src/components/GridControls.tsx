@@ -1,4 +1,4 @@
-export type LayoutMode = 'auto' | 'columns' | 'rows';
+export type LayoutMode = 'auto' | 'manual';
 
 interface Props {
   layoutMode: LayoutMode;
@@ -6,6 +6,7 @@ interface Props {
   rows: number;
   padding: number;
   onLayoutModeChange: (m: LayoutMode) => void;
+  // Reciprocal: edit columns → App also updates rows, and vice-versa.
   onColumnsChange: (c: number) => void;
   onRowsChange: (r: number) => void;
   onPaddingChange: (p: number) => void;
@@ -41,50 +42,40 @@ export function GridControls({
             <input
               type="radio"
               name="layout-mode"
-              checked={layoutMode === 'columns'}
-              onChange={() => onLayoutModeChange('columns')}
+              checked={layoutMode === 'manual'}
+              onChange={() => onLayoutModeChange('manual')}
             />
-            <span>Columns</span>
-          </label>
-          <label className="radio-group__item">
-            <input
-              type="radio"
-              name="layout-mode"
-              checked={layoutMode === 'rows'}
-              onChange={() => onLayoutModeChange('rows')}
-            />
-            <span>Rows</span>
+            <span>Manual</span>
           </label>
         </div>
       </div>
 
-      {layoutMode === 'columns' && (
-        <div className="field-row">
-          <label>Columns</label>
-          <input
-            type="number"
-            min={1}
-            max={256}
-            step={1}
-            value={columns}
-            onChange={(e) => onColumnsChange(Math.max(1, Number(e.target.value)))}
-            className="num-input num-input--sm"
-          />
-        </div>
-      )}
-
-      {layoutMode === 'rows' && (
-        <div className="field-row">
-          <label>Rows</label>
-          <input
-            type="number"
-            min={1}
-            max={256}
-            step={1}
-            value={rows}
-            onChange={(e) => onRowsChange(Math.max(1, Number(e.target.value)))}
-            className="num-input num-input--sm"
-          />
+      {layoutMode === 'manual' && (
+        <div className="field-row field-row--pair">
+          <label>Grid</label>
+          <div className="grid-pair">
+            <span className="grid-pair__label">Cols</span>
+            <input
+              type="number"
+              min={1}
+              max={256}
+              step={1}
+              value={columns}
+              onChange={(e) => onColumnsChange(Math.max(1, Number(e.target.value)))}
+              className="num-input num-input--sm"
+            />
+            <span className="grid-pair__x">×</span>
+            <span className="grid-pair__label">Rows</span>
+            <input
+              type="number"
+              min={1}
+              max={256}
+              step={1}
+              value={rows}
+              onChange={(e) => onRowsChange(Math.max(1, Number(e.target.value)))}
+              className="num-input num-input--sm"
+            />
+          </div>
         </div>
       )}
 

@@ -562,7 +562,7 @@ input[type="checkbox"]:focus {
 
 /* ── Narrow number input ──────────────────────────────────── */
 .num-input--sm {
-  width: 58px;
+  width: 62px;
 }
 
 /* ── Dual range slider ────────────────────────────────────── */
@@ -720,12 +720,20 @@ input[type="checkbox"]:focus {
 .timeline-editor__track {
   position: relative;
   height: 64px;
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--surface-2);
+  background: transparent;
   user-select: none;
   touch-action: none;
+  /* Handles sit outside the selected range; clipping happens on the inner strip wrapper. */
+  overflow: visible;
+}
+
+.timeline-editor__strip-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 8px;
   border: 1px solid var(--border);
+  background: var(--surface-2);
 }
 
 .timeline-editor__strip {
@@ -780,6 +788,7 @@ input[type="checkbox"]:focus {
   pointer-events: all;
   touch-action: none;
   transition: background 0.15s;
+  z-index: 2;
 }
 
 .timeline-editor__handle:hover,
@@ -787,20 +796,54 @@ input[type="checkbox"]:focus {
   background: var(--fg);
 }
 
+/* Handles sit OUTSIDE the selected range: start handle's right edge is at the
+ * start point, end handle's left edge is at the end point. */
 .timeline-editor__handle--start {
-  left: 0;
+  right: calc(100% - var(--lo));
   border-radius: 6px 0 0 6px;
 }
 
 .timeline-editor__handle--end {
-  right: 0;
+  left: var(--hi);
   border-radius: 0 6px 6px 0;
 }
 
 .timeline-editor__inputs {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.timeline-editor__input-group {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  column-gap: 6px;
+  row-gap: 4px;
+  align-items: center;
+}
+
+.timeline-editor__input-group > .timeline-editor__input-label {
+  grid-row: 1 / span 2;
+  grid-column: 1;
+  align-self: center;
+}
+
+.timeline-editor__input-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted-2);
+}
+
+.timeline-editor__meta {
+  font-family: 'Albert Sans', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-left: auto;
+  letter-spacing: 0.02em;
 }
 
 /* ── Range time row ───────────────────────────────────────── */
@@ -834,6 +877,47 @@ input[type="checkbox"]:focus {
   color: var(--muted-2);
   min-width: 32px;
   text-align: right;
+}
+
+/* Read-only readout (e.g. achieved quality in target-size mode). */
+.field-readout {
+  font-family: 'Albert Sans', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--muted-2);
+  padding: 4px 8px;
+  background: var(--surface-2);
+  border: 1px dashed var(--border-2);
+  border-radius: 6px;
+  min-width: 58px;
+  text-align: right;
+}
+
+/* Field row that pairs an editable input with a read-only derived readout. */
+.field-row--pair {
+  gap: 10px;
+}
+
+/* Reciprocal columns × rows pair — both editable, inline. */
+.grid-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.grid-pair__label {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted-2);
+}
+
+.grid-pair__x {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 0 2px;
 }
 
 /* ── Divider ──────────────────────────────────────────────── */

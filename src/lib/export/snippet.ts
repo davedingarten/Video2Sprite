@@ -12,10 +12,7 @@ export interface SnippetInput {
 }
 
 export interface SnippetFiles {
-  // Only the files that were selected get populated. `demo.html` adapts to
-  // whichever driver is present (first available in priority: vanilla-js,
-  // tiny-js, gsap, steps-css).
-  css?: string;
+  css: string;
   js?: string;       // vanilla-js driver (full-featured)
   tinyJs?: string;   // minimal loop-forever driver
   gsapJs?: string;   // GSAP-driven snippet (requires gsap at runtime)
@@ -34,21 +31,14 @@ export function buildSnippet(input: SnippetInput): SnippetFiles {
   const stepY = layout.tileHeight + layout.padding;
   const variants = input.variants && input.variants.length > 0 ? input.variants : DEFAULT_VARIANTS;
 
-  const css = variants.includes('steps-css')
-    ? buildCss({
-        cls,
-        sheet: input.sheetFilename,
-        tileW: layout.tileWidth,
-        tileH: layout.tileHeight,
-        columns: layout.columns,
-        stepX,
-        stepY,
-        durationSec,
-        frameCount,
-        padding: layout.padding,
-        loop,
-      })
-    : buildBaseCss({ cls, sheet: input.sheetFilename, tileW: layout.tileWidth, tileH: layout.tileHeight });
+  // Base CSS is always emitted — every driver needs width/height/bg-image.
+  // Keyframes are scoped to .${cls}--css so they don't fight JS drivers that
+  // mutate background-position on sibling elements.
+  const baseCss = buildBaseCss({ cls, sheet: input.sheetFilename, tileW: layout.tileWidth, tileH: layout.tileHeight });
+  const keyframesCss = variants.includes('steps-css')
+    ? buildKeyframesCss({ cls, columns: layout.columns, stepX, stepY, durationSec, frameCount, padding: layout.padding, loop })
+    : '';
+  const css = keyframesCss ? `${baseCss}\n${keyframesCss}` : baseCss;
 
   const js = variants.includes('vanilla-js')
     ? buildJs({ cls, fps, frameCount, columns: layout.columns, stepX, stepY, padding: layout.padding, loop })
@@ -67,7 +57,6 @@ export function buildSnippet(input: SnippetInput): SnippetFiles {
   return { css, js, tinyJs, gsapJs, html, variants };
 }
 
-// Minimal CSS (no keyframes) for snippets that set background-position from JS.
 function buildBaseCss(o: { cls: string; sheet: string; tileW: number; tileH: number }): string {
   return `.${o.cls} {
   width: ${o.tileW}px;
@@ -78,11 +67,8 @@ function buildBaseCss(o: { cls: string; sheet: string; tileW: number; tileH: num
 `;
 }
 
-function buildCss(o: {
+function buildKeyframesCss(o: {
   cls: string;
-  sheet: string;
-  tileW: number;
-  tileH: number;
   columns: number;
   stepX: number;
   stepY: number;
@@ -110,11 +96,7 @@ function buildCss(o: {
   keyframeEntries.push(`  100% { background-position: ${lastX}px ${lastY}px; }`);
 
   return `/* ${o.frameCount} frames, ${o.columns}x${rows}, ${o.durationSec.toFixed(3)}s */
-.${o.cls} {
-  width: ${o.tileW}px;
-  height: ${o.tileH}px;
-  background-image: url("${o.sheet}");
-  background-repeat: no-repeat;
+.${o.cls}--css {
   animation: ${o.cls}-play ${o.durationSec}s steps(1, end) ${iter};
 }
 
@@ -191,7 +173,8 @@ function buildJs(o: {
 `;
 }
 
-// Ultra-light driver: loop forever, no controls. ~10 lines.
+// Ultra-light driver: loops forever. Targets .${cls}--tiny so it doesn't
+// collide with other driver instances on the same demo page.
 function buildTinyJs(o: {
   cls: string;
   fps: number;
@@ -203,7 +186,7 @@ function buildTinyJs(o: {
 }): string {
   return `// Tiny sprite driver — loops forever, no API.
 (function () {
-  var el = document.querySelector('.${o.cls}');
+  var el = document.querySelector('.${o.cls}--tiny');
   if (!el) return;
   var f = 0, N = ${o.frameCount}, C = ${o.columns};
   var SX = ${o.stepX}, SY = ${o.stepY}, P = ${o.padding};
@@ -216,7 +199,6 @@ function buildTinyJs(o: {
 `;
 }
 
-// GSAP driver — tween is returned so consumers can plug it into ScrollTrigger.
 function buildGsapJs(o: {
   cls: string;
   fps: number;
@@ -227,7 +209,6 @@ function buildGsapJs(o: {
   padding: number;
 }): string {
   return `// GSAP sprite driver — requires gsap at runtime.
-// Returns a scrub-able, pause-able tween keyed to the element.
 // Usage:  var tween = window.spriteAnim(document.querySelector('.${o.cls}'));
 (function () {
   var FPS = ${o.fps};
@@ -255,40 +236,59 @@ function buildGsapJs(o: {
 }
 
 function buildHtml(cls: string, variants: SnippetVariant[]): string {
-  // Pick the richest interactive driver available for the demo page.
-  const hasVanilla = variants.includes('vanilla-js');
-  const hasTiny = variants.includes('tiny-js');
-  const hasGsap = variants.includes('gsap');
-
+  const sections: string[] = [];
   const scripts: string[] = [];
-  if (hasVanilla) scripts.push('<script src="anim.js"></script>');
-  if (hasTiny) scripts.push('<script src="anim-tiny.js"></script>');
-  if (hasGsap) {
+  const initLines: string[] = [];
+
+  if (variants.includes('steps-css')) {
+    sections.push(`  <section class="demo">
+    <h2>steps-css <small>(pure CSS, auto-plays)</small></h2>
+    <div class="${cls} ${cls}--css"></div>
+  </section>`);
+  }
+
+  if (variants.includes('vanilla-js')) {
+    sections.push(`  <section class="demo">
+    <h2>vanilla-js <small>(play / pause / seek)</small></h2>
+    <div class="${cls}" id="anim-vanilla"></div>
+    <div class="controls">
+      <button id="play-vanilla">Play</button>
+      <button id="pause-vanilla">Pause</button>
+    </div>
+  </section>`);
+    scripts.push('<script src="anim.js"></script>');
+    initLines.push(`    var ctrl = window.SpriteAnim(document.getElementById('anim-vanilla'));
+    document.getElementById('play-vanilla').onclick = ctrl.play;
+    document.getElementById('pause-vanilla').onclick = ctrl.pause;`);
+  }
+
+  if (variants.includes('tiny-js')) {
+    sections.push(`  <section class="demo">
+    <h2>tiny-js <small>(minimal loop, no controls)</small></h2>
+    <div class="${cls} ${cls}--tiny"></div>
+  </section>`);
+    scripts.push('<script src="anim-tiny.js"></script>');
+  }
+
+  if (variants.includes('gsap')) {
+    sections.push(`  <section class="demo">
+    <h2>gsap <small>(tween-based)</small></h2>
+    <div class="${cls}" id="anim-gsap"></div>
+    <div class="controls">
+      <button id="play-gsap">Play</button>
+      <button id="pause-gsap">Pause</button>
+    </div>
+  </section>`);
     scripts.push('<script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>');
     scripts.push('<script src="anim-gsap.js"></script>');
+    initLines.push(`    var tween = window.spriteAnim(document.getElementById('anim-gsap'));
+    document.getElementById('play-gsap').onclick = function () { tween.play(); };
+    document.getElementById('pause-gsap').onclick = function () { tween.pause(); };`);
   }
 
-  let init = '';
-  if (hasVanilla) {
-    init = `
-    var ctrl = window.SpriteAnim(document.getElementById('anim'));
-    document.getElementById('play').onclick = ctrl.play;
-    document.getElementById('pause').onclick = ctrl.pause;`;
-  } else if (hasGsap) {
-    init = `
-    var tween = window.spriteAnim(document.getElementById('anim'));
-    document.getElementById('play').onclick = function () { tween.play(); };
-    document.getElementById('pause').onclick = function () { tween.pause(); };`;
-  }
-
-  const controls = (hasVanilla || hasGsap)
-    ? `  <div>
-    <button id="play">Play</button>
-    <button id="pause">Pause</button>
-  </div>`
-    : '';
-  const initScript = init
-    ? `  <script>${init}
+  const initScript = initLines.length
+    ? `  <script>
+${initLines.join('\n')}
   </script>`
     : '';
 
@@ -298,10 +298,18 @@ function buildHtml(cls: string, variants: SnippetVariant[]): string {
   <meta charset="utf-8" />
   <title>Sprite animation demo</title>
   <link rel="stylesheet" href="anim.css" />
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 32px auto; padding: 0 16px; color: #222; }
+    .demo { margin: 24px 0; padding: 16px; border: 1px solid #e3e3e3; border-radius: 8px; background: #fafafa; }
+    .demo h2 { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
+    .demo h2 small { color: #888; font-weight: 400; font-size: 13px; margin-left: 6px; }
+    .controls { margin-top: 12px; }
+    .controls button { margin-right: 8px; padding: 6px 12px; cursor: pointer; }
+  </style>
 </head>
 <body>
-  <div class="${cls}" id="anim"></div>
-${controls}
+  <h1>Sprite animation demos</h1>
+${sections.join('\n')}
   ${scripts.join('\n  ')}
 ${initScript}
 </body>

@@ -63,7 +63,36 @@ export default function App() {
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('auto');
   const [columns, setColumns] = useState(6);
   const [rows, setRows] = useState(1);
+  // Which axis the user last edited — the other is derived from it when
+  // frame count changes, so the pair stays consistent.
+  const [manualAxis, setManualAxis] = useState<'columns' | 'rows'>('columns');
   const [padding, setPadding] = useState(0);
+
+  const estimatedFrames = Math.max(0, Math.round((endSec - startSec) * targetFps));
+
+  function handleColumnsChange(c: number) {
+    const cols = Math.max(1, c);
+    setColumns(cols);
+    setManualAxis('columns');
+    if (estimatedFrames > 0) setRows(Math.max(1, Math.ceil(estimatedFrames / cols)));
+  }
+  function handleRowsChange(r: number) {
+    const rs = Math.max(1, r);
+    setRows(rs);
+    setManualAxis('rows');
+    if (estimatedFrames > 0) setColumns(Math.max(1, Math.ceil(estimatedFrames / rs)));
+  }
+
+  // Keep the derived axis in sync when the frame count changes (fps or range edit).
+  useEffect(() => {
+    if (layoutMode !== 'manual' || estimatedFrames <= 0) return;
+    if (manualAxis === 'columns') {
+      setRows(Math.max(1, Math.ceil(estimatedFrames / Math.max(1, columns))));
+    } else {
+      setColumns(Math.max(1, Math.ceil(estimatedFrames / Math.max(1, rows))));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only recompute on frame-count change
+  }, [estimatedFrames]);
 
   // Sheet state
   const [sheetBitmap, setSheetBitmap] = useState<ImageBitmap | null>(null);
@@ -94,12 +123,18 @@ export default function App() {
 
   // Export controls
   const [exportFormat, setExportFormat] = useState<'jpeg' | 'png' | 'webp'>('jpeg');
+  const [compressionMode, setCompressionMode] = useState<'quality' | 'maxSize'>('quality');
   const [jpegQuality, setJpegQuality] = useState(85);
-  const [jpegMaxKB, setJpegMaxKB] = useState<number | ''>('');
+  const [targetKB, setTargetKB] = useState<number | ''>(200);
   const [pngColors, setPngColors] = useState(0);
   const [webpLossless, setWebpLossless] = useState(false);
   const [snippetVariants, setSnippetVariants] = useState<SnippetVariant[]>(['steps-css', 'vanilla-js']);
+  // Last encode result — drives the quality readout + unreachable warning in target-size mode.
+  const [encodeResult, setEncodeResult] = useState<{ quality: number; bytes: number; converged: boolean } | null>(null);
   const { exportAll, phase: exportPhase, error: exportError } = useExport();
+
+  const useMaxBytes = compressionMode === 'maxSize' && targetKB !== '' && Number(targetKB) > 0;
+  const activeMaxBytes = useMaxBytes ? Number(targetKB) * 1000 : undefined;
 
   function toggleSnippetVariant(v: SnippetVariant) {
     setSnippetVariants(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
@@ -117,7 +152,8 @@ export default function App() {
   useEffect(() => {
     setCompressedBitmap(prev => { prev?.close(); return null; });
     setCompressedBytes(null);
-  }, [exportFormat, jpegQuality, jpegMaxKB, pngColors, webpLossless]);
+    setEncodeResult(null);
+  }, [exportFormat, compressionMode, jpegQuality, targetKB, pngColors, webpLossless]);
 
   // Drive playback for split-view shared scrubber. Only runs when both
   // originals + compressed are showing (otherwise each SpritePlayer self-ticks).
@@ -187,7 +223,10 @@ export default function App() {
       });
       if (frameCount === 0) throw new Error('No frames in the selected range.');
 
-      const resolvedColumns = layoutMode === 'rows'
+      // Manual mode: in reciprocal UI we keep columns/rows mirrored, but re-derive
+      // from whichever axis the user last touched since actual frameCount may
+      // differ slightly from the estimate (source-fps rounding, etc).
+      const resolvedColumns = manualAxis === 'rows'
         ? Math.max(1, Math.ceil(frameCount / Math.max(1, rows)))
         : columns;
       const layout = layoutMode === 'auto'
@@ -242,33 +281,34 @@ export default function App() {
     try {
       let blob: Blob;
       let bytes: number;
+      let result: { quality: number; bytes: number; converged: boolean } | null = null;
       if (exportFormat === 'jpeg') {
-        const result = await encodeJpeg(sheetImageDataRef.current, {
+        const r = await encodeJpeg(sheetImageDataRef.current, {
           quality: jpegQuality,
-          maxBytes: jpegMaxKB ? Number(jpegMaxKB) * 1000 : undefined,
+          maxBytes: activeMaxBytes,
           onProgress: (i, n) => setCompressProgress({ i, n }),
         });
-        blob = result.blob;
-        bytes = result.bytes;
+        blob = r.blob; bytes = r.bytes;
+        result = { quality: r.quality, bytes: r.bytes, converged: r.converged };
       } else if (exportFormat === 'webp') {
-        const result = await encodeWebp(sheetImageDataRef.current, {
+        const r = await encodeWebp(sheetImageDataRef.current, {
           quality: jpegQuality,
-          maxBytes: jpegMaxKB ? Number(jpegMaxKB) * 1000 : undefined,
+          maxBytes: webpLossless ? undefined : activeMaxBytes,
           lossless: webpLossless,
           onProgress: (i, n) => setCompressProgress({ i, n }),
         });
-        blob = result.blob;
-        bytes = result.bytes;
+        blob = r.blob; bytes = r.bytes;
+        result = { quality: r.quality, bytes: r.bytes, converged: r.converged };
       } else {
-        const result = await encodePng(sheetImageDataRef.current, {
+        const r = await encodePng(sheetImageDataRef.current, {
           colors: pngColors || undefined,
         });
-        blob = result.blob;
-        bytes = result.bytes;
+        blob = r.blob; bytes = r.bytes;
       }
       const bitmap = await createImageBitmap(blob);
       setCompressedBitmap(prev => { prev?.close(); return bitmap; });
       setCompressedBytes(bytes);
+      setEncodeResult(result);
     } catch (_err) {
       // compression errors are non-fatal for preview
     } finally {
@@ -360,8 +400,8 @@ export default function App() {
                   rows={rows}
                   padding={padding}
                   onLayoutModeChange={setLayoutMode}
-                  onColumnsChange={setColumns}
-                  onRowsChange={setRows}
+                  onColumnsChange={handleColumnsChange}
+                  onRowsChange={handleRowsChange}
                   onPaddingChange={setPadding}
                 />
               </div>
@@ -398,72 +438,83 @@ export default function App() {
                     </div>
 
                     {exportFormat === 'webp' && (
+                      <div className="field-row">
+                        <label>Lossless</label>
+                        <input
+                          type="checkbox"
+                          checked={webpLossless}
+                          onChange={(e) => setWebpLossless(e.target.checked)}
+                        />
+                      </div>
+                    )}
+
+                    {(exportFormat === 'jpeg' || (exportFormat === 'webp' && !webpLossless)) && (
                       <>
-                        {!webpLossless && (
+                        <div className="field-row">
+                          <label>Mode</label>
+                          <div className="radio-group">
+                            <label className="radio-group__item">
+                              <input
+                                type="radio"
+                                name="compression-mode"
+                                checked={compressionMode === 'quality'}
+                                onChange={() => setCompressionMode('quality')}
+                              />
+                              <span>Quality</span>
+                            </label>
+                            <label className="radio-group__item">
+                              <input
+                                type="radio"
+                                name="compression-mode"
+                                checked={compressionMode === 'maxSize'}
+                                onChange={() => setCompressionMode('maxSize')}
+                              />
+                              <span>Target size</span>
+                            </label>
+                          </div>
+                        </div>
+
+                        {compressionMode === 'quality' ? (
+                          <div className="field-row">
+                            <label>Quality</label>
+                            <input
+                              type="range" min={10} max={100} value={jpegQuality}
+                              onChange={(e) => setJpegQuality(Number(e.target.value))}
+                              className="slider"
+                            />
+                            <input
+                              type="number" min={10} max={100} step={1} value={jpegQuality}
+                              onChange={(e) => setJpegQuality(Math.max(10, Math.min(100, Number(e.target.value))))}
+                              className="num-input num-input--sm"
+                            />
+                          </div>
+                        ) : (
                           <>
                             <div className="field-row">
-                              <label>Quality</label>
+                              <label>Target</label>
                               <input
-                                type="range" min={10} max={100} value={jpegQuality}
-                                onChange={(e) => setJpegQuality(Number(e.target.value))}
-                                className="slider"
-                              />
-                              <input
-                                type="number" min={10} max={100} step={1} value={jpegQuality}
-                                onChange={(e) => setJpegQuality(Math.max(10, Math.min(100, Number(e.target.value))))}
-                                className="num-input num-input--sm"
-                              />
-                            </div>
-                            <div className="field-row">
-                              <label>Max KB</label>
-                              <input
-                                type="number" min={1} placeholder="none" value={jpegMaxKB}
+                                type="number" min={1} placeholder="200" value={targetKB}
                                 onChange={(e) => {
-                                  if (e.target.value === '') { setJpegMaxKB(''); return; }
-                                  setJpegMaxKB(Math.max(1, Number(e.target.value)));
+                                  if (e.target.value === '') { setTargetKB(''); return; }
+                                  setTargetKB(Math.max(1, Number(e.target.value)));
                                 }}
                                 className="num-input num-input--sm"
                               />
+                              <span className="range-unit">KB</span>
                             </div>
+                            <div className="field-row">
+                              <label>Quality</label>
+                              <span className="field-readout">
+                                {encodeResult ? `≈ ${encodeResult.quality}` : '—'}
+                              </span>
+                            </div>
+                            {encodeResult && !encodeResult.converged && targetKB !== '' && (
+                              <div className="error-banner" style={{ marginBottom: 8 }}>
+                                Can&rsquo;t reach {targetKB} KB — smallest is {formatBytes(encodeResult.bytes)} at quality {encodeResult.quality}. Reduce fps, range, or dimensions.
+                              </div>
+                            )}
                           </>
                         )}
-                        <div className="field-row">
-                          <label>Lossless</label>
-                          <input
-                            type="checkbox"
-                            checked={webpLossless}
-                            onChange={(e) => setWebpLossless(e.target.checked)}
-                          />
-                        </div>
-                      </>
-                    )}
-
-                    {exportFormat === 'jpeg' && (
-                      <>
-                        <div className="field-row">
-                          <label>Quality</label>
-                          <input
-                            type="range" min={10} max={100} value={jpegQuality}
-                            onChange={(e) => setJpegQuality(Number(e.target.value))}
-                            className="slider"
-                          />
-                          <input
-                            type="number" min={10} max={100} step={1} value={jpegQuality}
-                            onChange={(e) => setJpegQuality(Math.max(10, Math.min(100, Number(e.target.value))))}
-                            className="num-input num-input--sm"
-                          />
-                        </div>
-                        <div className="field-row">
-                          <label>Max KB</label>
-                          <input
-                            type="number" min={1} placeholder="none" value={jpegMaxKB}
-                            onChange={(e) => {
-                              if (e.target.value === '') { setJpegMaxKB(''); return; }
-                              setJpegMaxKB(Math.max(1, Number(e.target.value)));
-                            }}
-                            className="num-input"
-                          />
-                        </div>
                       </>
                     )}
 
@@ -530,7 +581,7 @@ export default function App() {
                             options: {
                               format: exportFormat,
                               jpegQuality,
-                              maxFileSizeBytes: jpegMaxKB ? Number(jpegMaxKB) * 1000 : undefined,
+                              maxFileSizeBytes: exportFormat === 'webp' && webpLossless ? undefined : activeMaxBytes,
                               webpLossless: exportFormat === 'webp' ? webpLossless : undefined,
                               snippetVariants,
                             },
@@ -567,7 +618,13 @@ export default function App() {
                 <span className="preview-info">
                   {sheetInfo.w}×{sheetInfo.h}
                   <span className="preview-info__sep">·</span>
-                  {sheetInfo.cols}×{sheetInfo.rows} grid
+                  {sheetInfo.cols}×{sheetInfo.rows}
+                  <span className="preview-info__sep">·</span>
+                  {timestampsRef.current.length} frames @ {targetFps} fps
+                  <span className="preview-info__sep">·</span>
+                  {(endSec - startSec).toFixed(2)}s
+                  <span className="preview-info__sep">·</span>
+                  {sheetInfo.tileW}×{sheetInfo.tileH} tile
                   {compressedBytes !== null && (
                     <span className="preview-info__badge">{formatBytes(compressedBytes)}</span>
                   )}
@@ -686,6 +743,7 @@ export default function App() {
                 startSec={startSec}
                 endSec={endSec}
                 targetFps={targetFps}
+                sourceFps={info.sourceFps}
                 onChange={(s, e) => { setStartSec(s); setEndSec(e); }}
               />
             </div>

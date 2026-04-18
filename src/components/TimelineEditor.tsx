@@ -13,6 +13,7 @@ interface Props {
   startSec: number;
   endSec: number;
   targetFps: number;
+  sourceFps: number;
   onChange: (startSec: number, endSec: number) => void;
 }
 
@@ -30,10 +31,17 @@ export function TimelineEditor({
   startSec,
   endSec,
   targetFps,
+  sourceFps,
   onChange,
 }: Props) {
   const step = duration > 60 ? 0.1 : 0.01;
   const frames = Math.max(0, Math.round((endSec - startSec) * targetFps));
+  const clipDur = Math.max(0, endSec - startSec);
+  // Source frame indices — useful for exact-frame trimming independent of
+  // the output sampling rate.
+  const startFrame = sourceFps > 0 ? Math.round(startSec * sourceFps) : 0;
+  const endFrame = sourceFps > 0 ? Math.round(endSec * sourceFps) : 0;
+  const maxFrame = sourceFps > 0 ? Math.round(duration * sourceFps) : 0;
 
   const trackRef = useRef<HTMLDivElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
@@ -145,6 +153,14 @@ export function TimelineEditor({
   function setEnd(v: number) {
     onChange(startSec, clamp(v, startSec + step, duration));
   }
+  function setStartFrame(f: number) {
+    if (sourceFps <= 0) return;
+    setStart(clamp(f, 0, maxFrame) / sourceFps);
+  }
+  function setEndFrame(f: number) {
+    if (sourceFps <= 0) return;
+    setEnd(clamp(f, 0, maxFrame) / sourceFps);
+  }
 
   return (
     <div className="timeline-editor">
@@ -177,62 +193,86 @@ export function TimelineEditor({
         className="timeline-editor__track"
         style={{ '--lo': `${lo}%`, '--hi': `${hi}%` } as CSSProperties}
       >
-        <div ref={stripRef} className="timeline-editor__strip" aria-hidden />
-        <div className="timeline-editor__dim timeline-editor__dim--left" />
-        <div className="timeline-editor__dim timeline-editor__dim--right" />
-        <div className="timeline-editor__frame">
-          <div
-            className="timeline-editor__handle timeline-editor__handle--start"
-            role="slider"
-            aria-label="Start"
-            aria-valuemin={0}
-            aria-valuemax={duration}
-            aria-valuenow={startSec}
-            onPointerDown={handlePointerDown('start')}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-          >
-            <svg width="8" height="14" viewBox="0 0 8 14" fill="none">
-              <path d="M5.5 1L1.5 7L5.5 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
-          <div
-            className="timeline-editor__handle timeline-editor__handle--end"
-            role="slider"
-            aria-label="End"
-            aria-valuemin={0}
-            aria-valuemax={duration}
-            aria-valuenow={endSec}
-            onPointerDown={handlePointerDown('end')}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-          >
-            <svg width="8" height="14" viewBox="0 0 8 14" fill="none">
-              <path d="M2.5 1L6.5 7L2.5 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
+        <div className="timeline-editor__strip-clip">
+          <div ref={stripRef} className="timeline-editor__strip" aria-hidden />
+          <div className="timeline-editor__dim timeline-editor__dim--left" />
+          <div className="timeline-editor__dim timeline-editor__dim--right" />
+        </div>
+        <div className="timeline-editor__frame" aria-hidden />
+        <div
+          className="timeline-editor__handle timeline-editor__handle--start"
+          role="slider"
+          aria-label="Start"
+          aria-valuemin={0}
+          aria-valuemax={duration}
+          aria-valuenow={startSec}
+          onPointerDown={handlePointerDown('start')}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+        >
+          <svg width="8" height="14" viewBox="0 0 8 14" fill="none">
+            <path d="M2.5 1L6.5 7L2.5 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+        <div
+          className="timeline-editor__handle timeline-editor__handle--end"
+          role="slider"
+          aria-label="End"
+          aria-valuemin={0}
+          aria-valuemax={duration}
+          aria-valuenow={endSec}
+          onPointerDown={handlePointerDown('end')}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+        >
+          <svg width="8" height="14" viewBox="0 0 8 14" fill="none">
+            <path d="M5.5 1L1.5 7L5.5 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
         </div>
       </div>
 
       <div className="timeline-editor__inputs">
-        <input
-          type="number" min={0} max={endSec - step} step={step}
-          value={startSec.toFixed(2)}
-          onChange={(e) => setStart(Number(e.target.value))}
-          className="num-input"
-        />
-        <span className="range-unit">s</span>
-        <span className="range-sep">—</span>
-        <input
-          type="number" min={startSec + step} max={duration} step={step}
-          value={endSec.toFixed(2)}
-          onChange={(e) => setEnd(Number(e.target.value))}
-          className="num-input"
-        />
-        <span className="range-unit">s</span>
-        <span className="range-frames">{frames} frames</span>
+        <div className="timeline-editor__input-group">
+          <span className="timeline-editor__input-label">Start</span>
+          <input
+            type="number" min={0} max={endSec - step} step={step}
+            value={startSec.toFixed(2)}
+            onChange={(e) => setStart(Number(e.target.value))}
+            className="num-input num-input--sm"
+          />
+          <span className="range-unit">s</span>
+          <input
+            type="number" min={0} max={Math.max(0, endFrame - 1)} step={1}
+            value={startFrame}
+            onChange={(e) => setStartFrame(Number(e.target.value))}
+            className="num-input num-input--sm"
+            disabled={sourceFps <= 0}
+          />
+          <span className="range-unit">f</span>
+        </div>
+        <div className="timeline-editor__input-group">
+          <span className="timeline-editor__input-label">End</span>
+          <input
+            type="number" min={startSec + step} max={duration} step={step}
+            value={endSec.toFixed(2)}
+            onChange={(e) => setEnd(Number(e.target.value))}
+            className="num-input num-input--sm"
+          />
+          <span className="range-unit">s</span>
+          <input
+            type="number" min={startFrame + 1} max={maxFrame} step={1}
+            value={endFrame}
+            onChange={(e) => setEndFrame(Number(e.target.value))}
+            className="num-input num-input--sm"
+            disabled={sourceFps <= 0}
+          />
+          <span className="range-unit">f</span>
+        </div>
+        <span className="timeline-editor__meta">
+          {clipDur.toFixed(2)}s · {frames} frames @ {targetFps} fps
+        </span>
       </div>
     </div>
   );
