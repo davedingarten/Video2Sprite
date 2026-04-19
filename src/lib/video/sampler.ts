@@ -42,12 +42,28 @@ export function planSampling(
   const targets: number[] = [];
   for (let t = startUs; t < endUs; t += gapUs) targets.push(Math.round(t));
 
+  // Index window of samples whose timestamp lies inside [startUs, endUs].
+  // Picks must stay inside this window so a nearest-timestamp choice can't
+  // leak a frame that's just outside the user's trim range.
+  let inFirst = -1;
+  let inLast = -1;
+  for (let i = 0; i < samples.length; i++) {
+    const ts = samples[i].timestampUs;
+    if (ts >= startUs && ts <= endUs) {
+      if (inFirst < 0) inFirst = i;
+      inLast = i;
+    }
+  }
+  if (inFirst < 0) {
+    throw new Error('Range too short for any source frame.');
+  }
+
   const picked: number[] = [];
   const keep = new Set<number>();
-  let cursor = 0;
+  let cursor = inFirst;
   for (const target of targets) {
     while (
-      cursor + 1 < samples.length &&
+      cursor + 1 <= inLast &&
       Math.abs(samples[cursor + 1].timestampUs - target) <=
         Math.abs(samples[cursor].timestampUs - target)
     ) {

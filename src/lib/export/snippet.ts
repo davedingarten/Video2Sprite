@@ -116,7 +116,7 @@ function buildJs(o: {
   padding: number;
   loop: boolean;
 }): string {
-  return `// Frame-stepper for .${o.cls} — supports play/pause/seek.
+  return `// Sprite-frame stepper: window.SpriteAnim(el) returns { play, pause, seek, frame, frameCount }.
 (function () {
   var FPS = ${o.fps};
   var FRAME_COUNT = ${o.frameCount};

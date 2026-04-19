@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVideoFile } from './hooks/useVideoFile';
 import { useExport } from './hooks/useExport';
 import { Uploader } from './components/Uploader';
@@ -7,13 +7,13 @@ import { TimelineEditor } from './components/TimelineEditor';
 import { SamplingControls } from './components/SamplingControls';
 import { GridControls, type LayoutMode } from './components/GridControls';
 import { SpritePlayer, SpriteSharedControls } from './components/SpritePlayer';
-import { extractFrames } from './lib/video/extract';
+import { prepareExtract, runExtract } from './lib/video/extract';
+import { computeActualFps } from './lib/video/fps';
 import { autoOptimize } from './lib/spritesheet/auto-optimize';
 import { computeLayout } from './lib/spritesheet/layout';
 import { canvasToImageData, createCompositor } from './lib/spritesheet/compositor';
-import { encodeJpeg } from './lib/export/jpeg';
-import { encodePng } from './lib/export/png';
-import { encodeWebp } from './lib/export/webp';
+import { previewCompression as previewCompressionWorker } from './lib/export/exportWorkerClient';
+import { createStillCapture, type StillsResult } from './lib/export/stills';
 import type { GridLayout, ScaleMode, SnippetVariant } from './types';
 import './App.css';
 import './components/components.css';
@@ -61,38 +61,32 @@ export default function App() {
   const [targetFps, setTargetFps] = useState(10);
   const [scaleMode, setScaleMode] = useState<ScaleMode>({ kind: 'fit-width', width: 320 });
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('auto');
-  const [columns, setColumns] = useState(6);
-  const [rows, setRows] = useState(1);
-  // Which axis the user last edited — the other is derived from it when
-  // frame count changes, so the pair stays consistent.
+  // Only the axis the user edited is stored; the other is derived from it
+  // and the current frame count. Keeps the pair consistent without an effect.
   const [manualAxis, setManualAxis] = useState<'columns' | 'rows'>('columns');
+  const [manualValue, setManualValue] = useState(6);
   const [padding, setPadding] = useState(0);
 
   const estimatedFrames = Math.max(0, Math.round((endSec - startSec) * targetFps));
 
+  const { columns, rows } = useMemo(() => {
+    const v = Math.max(1, manualValue);
+    if (manualAxis === 'columns') {
+      const r = estimatedFrames > 0 ? Math.max(1, Math.ceil(estimatedFrames / v)) : 1;
+      return { columns: v, rows: r };
+    }
+    const c = estimatedFrames > 0 ? Math.max(1, Math.ceil(estimatedFrames / v)) : 1;
+    return { columns: c, rows: v };
+  }, [manualAxis, manualValue, estimatedFrames]);
+
   function handleColumnsChange(c: number) {
-    const cols = Math.max(1, c);
-    setColumns(cols);
     setManualAxis('columns');
-    if (estimatedFrames > 0) setRows(Math.max(1, Math.ceil(estimatedFrames / cols)));
+    setManualValue(Math.max(1, c));
   }
   function handleRowsChange(r: number) {
-    const rs = Math.max(1, r);
-    setRows(rs);
     setManualAxis('rows');
-    if (estimatedFrames > 0) setColumns(Math.max(1, Math.ceil(estimatedFrames / rs)));
+    setManualValue(Math.max(1, r));
   }
-
-  // Keep the derived axis in sync when the frame count changes (fps or range edit).
-  useEffect(() => {
-    if (layoutMode !== 'manual' || estimatedFrames <= 0) return;
-    if (manualAxis === 'columns') {
-      setRows(Math.max(1, Math.ceil(estimatedFrames / Math.max(1, columns))));
-    } else {
-      setColumns(Math.max(1, Math.ceil(estimatedFrames / Math.max(1, rows))));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only recompute on frame-count change
-  }, [estimatedFrames]);
 
   // Sheet state
   const [sheetBitmap, setSheetBitmap] = useState<ImageBitmap | null>(null);
@@ -108,6 +102,7 @@ export default function App() {
   const sheetImageDataRef = useRef<ImageData | null>(null);
   const layoutRef = useRef<GridLayout | null>(null);
   const timestampsRef = useRef<number[]>([]);
+  const stillsRef = useRef<StillsResult | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasRefCompressed = useRef<HTMLCanvasElement>(null);
 
@@ -131,13 +126,40 @@ export default function App() {
   const [snippetVariants, setSnippetVariants] = useState<SnippetVariant[]>(['steps-css', 'vanilla-js']);
   // Last encode result — drives the quality readout + unreachable warning in target-size mode.
   const [encodeResult, setEncodeResult] = useState<{ quality: number; bytes: number; converged: boolean } | null>(null);
-  const { exportAll, phase: exportPhase, error: exportError } = useExport();
+  const [compressError, setCompressError] = useState<string | null>(null);
+  const { exportAll, phase: exportPhase, error: exportError, oversize, clearOversize } = useExport();
 
   const useMaxBytes = compressionMode === 'maxSize' && targetKB !== '' && Number(targetKB) > 0;
   const activeMaxBytes = useMaxBytes ? Number(targetKB) * 1000 : undefined;
 
   function toggleSnippetVariant(v: SnippetVariant) {
     setSnippetVariants(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
+  }
+
+  function runExport(forceOversize: boolean) {
+    if (!info || !sheetImageDataRef.current || !layoutRef.current || !stillsRef.current) return;
+    const actualFps = computeActualFps(
+      timestampsRef.current,
+      endSec - startSec,
+      targetFps,
+    );
+    exportAll({
+      imageData: sheetImageDataRef.current,
+      stills: stillsRef.current,
+      layout: layoutRef.current,
+      info,
+      actualFps,
+      frameTimestampsMs: timestampsRef.current,
+      options: {
+        format: exportFormat,
+        jpegQuality,
+        maxFileSizeBytes: exportFormat === 'webp' && webpLossless ? undefined : activeMaxBytes,
+        webpLossless: exportFormat === 'webp' ? webpLossless : undefined,
+        snippetVariants,
+      },
+      pngColors: exportFormat === 'png' ? pngColors : undefined,
+      forceOversize,
+    });
   }
 
   // When a new file loads, reset range to full duration.
@@ -153,7 +175,9 @@ export default function App() {
     setCompressedBitmap(prev => { prev?.close(); return null; });
     setCompressedBytes(null);
     setEncodeResult(null);
-  }, [exportFormat, compressionMode, jpegQuality, targetKB, pngColors, webpLossless]);
+    setCompressError(null);
+    clearOversize();
+  }, [exportFormat, compressionMode, jpegQuality, targetKB, pngColors, webpLossless, clearOversize]);
 
   // Drive playback for split-view shared scrubber. Only runs when both
   // originals + compressed are showing (otherwise each SpritePlayer self-ticks).
@@ -161,7 +185,7 @@ export default function App() {
     if (!sheetBitmap || !compressedBitmap || !sharedPlaying || showSheet) return;
     const fc = timestampsRef.current.length || (sheetInfo?.cols ?? 1) * (sheetInfo?.rows ?? 1);
     const dur = endSec - startSec;
-    const fps = fc > 1 && dur > 0 ? fc / dur : targetFps;
+    const fps = computeActualFps(timestampsRef.current, dur, targetFps);
     const interval = 1000 / Math.max(1, fps);
     let raf = 0;
     let last = 0;
@@ -191,6 +215,7 @@ export default function App() {
     sheetImageDataRef.current = null;
     layoutRef.current = null;
     timestampsRef.current = [];
+    stillsRef.current = null;
     setProgress(null);
     setGenError(null);
     clearCompressed();
@@ -210,17 +235,15 @@ export default function App() {
     sheetImageDataRef.current = null;
     layoutRef.current = null;
     timestampsRef.current = [];
+    stillsRef.current = null;
     clearCompressed();
 
     const { tileWidth, tileHeight } = resolveTile(scaleMode, info.width, info.height);
 
     try {
-      setProgress({ phase: 'Counting frames…', drawn: 0, total: 0 });
-      let frameCount = 0;
-      await extractFrames(file, { startSec, endSec, targetFps }, ({ frame }) => {
-        frameCount++;
-        frame.close();
-      });
+      setProgress({ phase: 'Planning…', drawn: 0, total: 0 });
+      const prepared = await prepareExtract(file, { startSec, endSec, targetFps });
+      const frameCount = prepared.framesPlanned;
       if (frameCount === 0) throw new Error('No frames in the selected range.');
 
       // Manual mode: in reciprocal UI we keep columns/rows mirrored, but re-derive
@@ -240,16 +263,19 @@ export default function App() {
       }
 
       const compositor = createCompositor(layout);
+      const stillCapture = createStillCapture(layout.tileWidth, layout.tileHeight, frameCount - 1);
       const timestamps: number[] = [];
       setProgress({ phase: 'Compositing…', drawn: 0, total: frameCount });
-      await extractFrames(file, { startSec, endSec, targetFps }, ({ frame, outputIndex, timestampMs }) => {
+      await runExtract(prepared, ({ frame, outputIndex, timestampMs }) => {
         compositor.drawFrame(frame, outputIndex);
+        stillCapture.capture(frame, outputIndex);
         frame.close();
         timestamps.push(timestampMs);
         setProgress({ phase: 'Compositing…', drawn: outputIndex + 1, total: frameCount });
       });
       layoutRef.current = layout;
       timestampsRef.current = timestamps;
+      stillsRef.current = stillCapture.result();
 
       sheetImageDataRef.current = canvasToImageData(compositor.canvas);
       const bitmap =
@@ -278,39 +304,32 @@ export default function App() {
     if (!sheetImageDataRef.current) return;
     setCompressing(true);
     setCompressProgress(null);
+    setCompressError(null);
     try {
-      let blob: Blob;
-      let bytes: number;
-      let result: { quality: number; bytes: number; converged: boolean } | null = null;
-      if (exportFormat === 'jpeg') {
-        const r = await encodeJpeg(sheetImageDataRef.current, {
-          quality: jpegQuality,
-          maxBytes: activeMaxBytes,
-          onProgress: (i, n) => setCompressProgress({ i, n }),
-        });
-        blob = r.blob; bytes = r.bytes;
-        result = { quality: r.quality, bytes: r.bytes, converged: r.converged };
-      } else if (exportFormat === 'webp') {
-        const r = await encodeWebp(sheetImageDataRef.current, {
-          quality: jpegQuality,
-          maxBytes: webpLossless ? undefined : activeMaxBytes,
-          lossless: webpLossless,
-          onProgress: (i, n) => setCompressProgress({ i, n }),
-        });
-        blob = r.blob; bytes = r.bytes;
-        result = { quality: r.quality, bytes: r.bytes, converged: r.converged };
-      } else {
-        const r = await encodePng(sheetImageDataRef.current, {
-          colors: pngColors || undefined,
-        });
-        blob = r.blob; bytes = r.bytes;
-      }
-      const bitmap = await createImageBitmap(blob);
+      const options = {
+        format: exportFormat,
+        jpegQuality,
+        maxFileSizeBytes: exportFormat === 'webp' && webpLossless ? undefined : activeMaxBytes,
+        webpLossless: exportFormat === 'webp' ? webpLossless : undefined,
+      };
+      const r = await previewCompressionWorker(
+        sheetImageDataRef.current,
+        options,
+        exportFormat === 'png' ? pngColors : undefined,
+        (_phase, i, n) => {
+          if (i !== undefined && n !== undefined) setCompressProgress({ i, n });
+        },
+      );
+      const bitmap = await createImageBitmap(r.blob);
       setCompressedBitmap(prev => { prev?.close(); return bitmap; });
-      setCompressedBytes(bytes);
-      setEncodeResult(result);
-    } catch (_err) {
-      // compression errors are non-fatal for preview
+      setCompressedBytes(r.bytes);
+      setEncodeResult(
+        r.quality !== undefined && r.converged !== undefined
+          ? { quality: r.quality, bytes: r.bytes, converged: r.converged }
+          : null,
+      );
+    } catch (err) {
+      setCompressError((err as Error).message);
     } finally {
       setCompressing(false);
       setCompressProgress(null);
@@ -544,7 +563,8 @@ export default function App() {
                       </button>
                     </div>
 
-                    {exportError && <div className="error-banner" style={{ marginTop: 8 }}>{exportError}</div>}
+                    {compressError && <div className="error-banner" style={{ marginTop: 8 }}>{compressError}</div>}
+                    {exportError && !oversize && <div className="error-banner" style={{ marginTop: 8 }}>{exportError}</div>}
 
                     <div className="snippet-variants">
                       <div className="snippet-variants__title">Playback snippets</div>
@@ -565,29 +585,27 @@ export default function App() {
                       ))}
                     </div>
 
+                    {oversize && (
+                      <div className="error-banner" style={{ marginTop: 8 }}>
+                        <div>{exportError}</div>
+                        <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
+                          <button
+                            className="btn-secondary"
+                            onClick={() => {
+                              clearOversize();
+                              runExport(true);
+                            }}
+                          >Export anyway</button>
+                          <button className="btn-secondary" onClick={clearOversize}>Dismiss</button>
+                        </div>
+                      </div>
+                    )}
+
                     <div style={{ marginTop: 8 }}>
                       <button
                         className="btn-primary"
-                        disabled={busy || exportPhase === 'sheet' || exportPhase === 'stills'}
-                        onClick={() => {
-                          if (!file || !info || !sheetImageDataRef.current || !layoutRef.current) return;
-                          exportAll({
-                            file,
-                            imageData: sheetImageDataRef.current,
-                            layout: layoutRef.current,
-                            info,
-                            extract: { startSec, endSec, targetFps },
-                            frameTimestampsMs: timestampsRef.current,
-                            options: {
-                              format: exportFormat,
-                              jpegQuality,
-                              maxFileSizeBytes: exportFormat === 'webp' && webpLossless ? undefined : activeMaxBytes,
-                              webpLossless: exportFormat === 'webp' ? webpLossless : undefined,
-                              snippetVariants,
-                            },
-                            pngColors: exportFormat === 'png' ? pngColors : undefined,
-                          });
-                        }}
+                        disabled={busy || exportPhase === 'sheet' || exportPhase === 'stills' || snippetVariants.length === 0}
+                        onClick={() => runExport(false)}
                       >
                         {exportPhase === 'sheet' ? 'Encoding sheet…'
                           : exportPhase === 'stills' ? 'Encoding stills…'
@@ -653,7 +671,7 @@ export default function App() {
                 {!showSheet ? (() => {
                   const fc = timestampsRef.current.length;
                   const dur = endSec - startSec;
-                  const actualFps = fc > 1 && dur > 0 ? fc / dur : targetFps;
+                  const actualFps = computeActualFps(timestampsRef.current, dur, targetFps);
                   const totalFrames = fc || sheetInfo.cols * sheetInfo.rows;
                   const playerProps = {
                     layout: layoutRef.current!,

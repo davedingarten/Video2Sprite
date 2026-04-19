@@ -51,14 +51,11 @@ export async function encodePng(
   // Lossless path: use the browser's built-in PNG encoder via an offscreen
   // canvas — much faster than oxipng WASM for large sheets, at the cost of
   // ~20-30% larger files. oxipng's gains on photographic chroma noise are
-  // minimal anyway (incompressible high-frequency data).
-  const canvas = document.createElement('canvas');
-  canvas.width = imageData.width;
-  canvas.height = imageData.height;
+  // minimal anyway (incompressible high-frequency data). OffscreenCanvas so
+  // this path works identically on the main thread and inside a Worker.
+  const canvas = new OffscreenCanvas(imageData.width, imageData.height);
   canvas.getContext('2d')!.putImageData(imageData, 0, 0);
-  const blob = await new Promise<Blob>((resolve, reject) =>
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob returned null'))), 'image/png'),
-  );
+  const blob = await canvas.convertToBlob({ type: 'image/png' });
   return {
     blob,
     bytes: blob.size,

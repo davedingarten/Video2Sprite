@@ -52,7 +52,23 @@ function codecDescription(mp4: ReturnType<typeof createFile>, trackId: number): 
   return full.slice(8);
 }
 
-export async function demuxFile(file: File): Promise<DemuxResult> {
+// Demux results are cached per File so preview, still capture, and export
+// don't each pay the mp4box parse + arrayBuffer cost. Keyed by identity — a
+// new upload produces a new File and gets a fresh parse.
+const demuxCache = new WeakMap<File, Promise<DemuxResult>>();
+
+export function demuxFile(file: File): Promise<DemuxResult> {
+  const cached = demuxCache.get(file);
+  if (cached) return cached;
+  const fresh = demuxFileUncached(file).catch((err) => {
+    demuxCache.delete(file);
+    throw err;
+  });
+  demuxCache.set(file, fresh);
+  return fresh;
+}
+
+async function demuxFileUncached(file: File): Promise<DemuxResult> {
   const mp4 = createFile();
   const container = containerFromName(file.name);
   const samples: DemuxedSample[] = [];

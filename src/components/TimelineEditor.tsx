@@ -46,16 +46,22 @@ export function TimelineEditor({
   const trackRef = useRef<HTMLDivElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [videoURL, setVideoURL] = useState<string | null>(null);
   const [dragging, setDragging] = useState<'start' | 'end' | null>(null);
-  const [previewSec, setPreviewSec] = useState(startSec);
+  const [dragPreviewSec, setDragPreviewSec] = useState(startSec);
 
-  // Object URL for the <video> preview source.
+  // Object URL for the <video> preview source. createObjectURL must run
+  // in an effect so the matching revoke always pairs with it — a
+  // render-time (useMemo) call can leak on aborted renders / StrictMode.
+  const [videoURL, setVideoURL] = useState<string | null>(null);
   useEffect(() => {
     const url = URL.createObjectURL(file);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- external-system sync: blob URL lifecycle must pair with revoke in the cleanup
     setVideoURL(url);
     return () => URL.revokeObjectURL(url);
   }, [file]);
+
+  // When dragging, show the scrub position; otherwise track the range start.
+  const previewSec = dragging ? dragPreviewSec : startSec;
 
   // Filmstrip thumbs via WebCodecs (small, ~15 bitmaps).
   useEffect(() => {
@@ -103,12 +109,6 @@ export function TimelineEditor({
     }
   }, [previewSec]);
 
-  // Snap preview to startSec on external range changes when not actively dragging.
-  useEffect(() => {
-    if (dragging) return;
-    setPreviewSec(startSec);
-  }, [startSec, dragging]);
-
   function secondsFromClientX(clientX: number): number {
     const rect = trackRef.current?.getBoundingClientRect();
     if (!rect || rect.width === 0) return 0;
@@ -120,7 +120,7 @@ export function TimelineEditor({
     return (e: RPointerEvent<HTMLDivElement>) => {
       (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
       setDragging(which);
-      setPreviewSec(which === 'start' ? startSec : endSec);
+      setDragPreviewSec(which === 'start' ? startSec : endSec);
     };
   }
 
@@ -130,11 +130,11 @@ export function TimelineEditor({
     if (dragging === 'start') {
       const clamped = clamp(s, 0, endSec - step);
       onChange(clamped, endSec);
-      setPreviewSec(clamped);
+      setDragPreviewSec(clamped);
     } else {
       const clamped = clamp(s, startSec + step, duration);
       onChange(startSec, clamped);
-      setPreviewSec(clamped);
+      setDragPreviewSec(clamped);
     }
   }
 

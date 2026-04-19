@@ -1,8 +1,8 @@
 import type { VideoFileInfo } from '../../types';
-import { demuxFile } from './demuxer';
+import { demuxFile, type DemuxedTrack } from './demuxer';
 import { checkCodecSupport } from './capability';
-import { decodeSamples, type DecodeableSample } from './decoder';
-import { planSampling } from './sampler';
+import { decodeSamples, type DecodeableSample, type DecodeConfig } from './decoder';
+import { planSampling, type SamplingPlan } from './sampler';
 
 export interface ExtractOptions {
   startSec: number;
@@ -22,11 +22,22 @@ export interface ExtractResult {
   targetsRequested: number;
 }
 
-export async function extractFrames(
+// A prepared decode plan. Splitting this out from runExtract lets callers learn
+// framesPlanned (== emitted count) without paying for a full decode pass.
+export interface ExtractPlan {
+  info: VideoFileInfo;
+  track: DemuxedTrack;
+  window: DecodeableSample[];
+  decoderConfig: DecodeConfig;
+  plan: SamplingPlan;
+  framesPlanned: number;
+  targetsRequested: number;
+}
+
+export async function prepareExtract(
   file: File,
   options: ExtractOptions,
-  onFrame: (f: ExtractedFrame) => void,
-): Promise<ExtractResult> {
+): Promise<ExtractPlan> {
   const { track, samples } = await demuxFile(file);
   await checkCodecSupport(track.codec, track.width, track.height, track.description);
 
@@ -54,27 +65,47 @@ export async function extractFrames(
     isKey: s.isSync,
   }));
 
-  let emitted = 0;
-  await decodeSamples(
+  return {
+    info,
+    track,
     window,
-    {
+    decoderConfig: {
       codec: track.codec,
       description: track.description,
       codedWidth: track.width,
       codedHeight: track.height,
     },
-    (frame) => {
-      if (frame.timestamp !== null && plan.keepTimestampsUs.has(frame.timestamp)) {
-        onFrame({ frame, outputIndex: emitted++, timestampMs: frame.timestamp / 1000 });
-      } else {
-        frame.close();
-      }
-    },
-  );
-
-  return {
-    info,
-    framesEmitted: emitted,
+    plan,
+    framesPlanned: plan.keepTimestampsUs.size,
     targetsRequested: plan.targetTimestampsUs.length,
+  };
+}
+
+export async function runExtract(
+  prepared: ExtractPlan,
+  onFrame: (f: ExtractedFrame) => void,
+): Promise<number> {
+  let emitted = 0;
+  await decodeSamples(prepared.window, prepared.decoderConfig, (frame) => {
+    if (frame.timestamp !== null && prepared.plan.keepTimestampsUs.has(frame.timestamp)) {
+      onFrame({ frame, outputIndex: emitted++, timestampMs: frame.timestamp / 1000 });
+    } else {
+      frame.close();
+    }
+  });
+  return emitted;
+}
+
+export async function extractFrames(
+  file: File,
+  options: ExtractOptions,
+  onFrame: (f: ExtractedFrame) => void,
+): Promise<ExtractResult> {
+  const prepared = await prepareExtract(file, options);
+  const emitted = await runExtract(prepared, onFrame);
+  return {
+    info: prepared.info,
+    framesEmitted: emitted,
+    targetsRequested: prepared.targetsRequested,
   };
 }

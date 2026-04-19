@@ -35,6 +35,17 @@ export function SpritePlayer({
   const rafRef = useRef<number | null>(null);
   const lastTickRef = useRef<number>(0);
 
+  // Reset during render when the bitmap/layout identity changes —
+  // avoids the effect-driven setState pattern. frameRef catches up via
+  // its own sync effect on the next commit.
+  const [prevBitmap, setPrevBitmap] = useState(bitmap);
+  const [prevLayout, setPrevLayout] = useState(layout);
+  if (prevBitmap !== bitmap || prevLayout !== layout) {
+    setPrevBitmap(bitmap);
+    setPrevLayout(layout);
+    if (!isControlled && internalFrame !== 0) setInternalFrame(0);
+  }
+
   const drawFrame = useCallback((f: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -114,11 +125,7 @@ export function SpritePlayer({
 
   useEffect(() => {
     drawFrame(0);
-    if (!isControlled) {
-      setInternalFrame(0);
-      frameRef.current = 0;
-    }
-  }, [bitmap, layout, drawFrame, isControlled]);
+  }, [bitmap, layout, drawFrame]);
 
   function togglePlay() {
     setPlaying(!playing);
