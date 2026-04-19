@@ -133,7 +133,11 @@ export default function App() {
   const activeMaxBytes = useMaxBytes ? Number(targetKB) * 1000 : undefined;
 
   function toggleSnippetVariant(v: SnippetVariant) {
-    setSnippetVariants(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
+    setSnippetVariants(prev => {
+      if (!prev.includes(v)) return [...prev, v];
+      if (prev.length === 1) return prev;
+      return prev.filter(x => x !== v);
+    });
   }
 
   function runExport(forceOversize: boolean) {
@@ -573,16 +577,21 @@ export default function App() {
                         { id: 'vanilla-js', label: 'Vanilla JS' },
                         { id: 'tiny-js', label: 'Tiny JS (loop only)' },
                         { id: 'gsap', label: 'GSAP' },
-                      ] as const).map(({ id, label }) => (
-                        <label key={id} className="snippet-variants__item">
-                          <input
-                            type="checkbox"
-                            checked={snippetVariants.includes(id)}
-                            onChange={() => toggleSnippetVariant(id)}
-                          />
-                          <span>{label}</span>
-                        </label>
-                      ))}
+                      ] as const).map(({ id, label }) => {
+                        const checked = snippetVariants.includes(id);
+                        const lockLast = checked && snippetVariants.length === 1;
+                        return (
+                          <label key={id} className="snippet-variants__item">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={lockLast}
+                              onChange={() => toggleSnippetVariant(id)}
+                            />
+                            <span>{label}</span>
+                          </label>
+                        );
+                      })}
                     </div>
 
                     {oversize && (

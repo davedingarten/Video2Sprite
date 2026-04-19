@@ -43,6 +43,7 @@ function ensureWorker(): Worker {
     const err = new Error(ev.message || 'export worker crashed');
     for (const p of pending.values()) p.reject(err);
     pending.clear();
+    worker = null;
   };
   return worker;
 }
