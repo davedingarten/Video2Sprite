@@ -142,29 +142,6 @@ function Hero({ isMobile }: { isMobile: boolean }) {
           <SpriteDemo />
         </div>
       </div>
-
-      <div className="hero__marquee" aria-hidden>
-        <div className="hero__marquee-track">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <span key={i} className="hero__marquee-row">
-              <span>DV360</span>
-              <span className="dot" />
-              <span>Campaign&nbsp;Manager&nbsp;360</span>
-              <span className="dot" />
-              <span>Google&nbsp;Display</span>
-              <span className="dot" />
-              <span>Xandr</span>
-              <span className="dot" />
-              <span>Amazon&nbsp;Ads</span>
-              <span className="dot" />
-              <span>The&nbsp;Trade&nbsp;Desk</span>
-              <span className="dot" />
-              <span>LinkedIn&nbsp;Ads</span>
-              <span className="dot" />
-            </span>
-          ))}
-        </div>
-      </div>
     </section>
   );
 }
@@ -371,14 +348,6 @@ function Privacy() {
             </div>
           </li>
         </ul>
-
-        <div className="privacy__proof">
-          <span className="privacy__proof-k">proof</span>
-          <code className="privacy__proof-v">
-            <span className="privacy__proof-comment"># Network tab during a full export:</span><br />
-            &gt;&nbsp;0&nbsp;requests&nbsp;·&nbsp;0&nbsp;kB&nbsp;sent&nbsp;·&nbsp;0&nbsp;kB&nbsp;received
-          </code>
-        </div>
       </div>
     </section>
   );
